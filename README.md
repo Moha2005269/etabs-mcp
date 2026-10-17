@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="docs/assets/demo.gif" alt="An AI agent driving ETABS through etabs-mcp: modelling, analysis and steel design" width="100%">
+<img src="docs/assets/hero.webp" alt="An AI agent models, analyses, designs and iterates a 6-storey steel building in ETABS through etabs-mcp" width="100%">
+
+<sub>Rendered from a live ETABS 23 session: every member, deflection and D/C ratio is real. <a href="docs/assets/hero.mp4">MP4</a></sub>
 
 # etabs-mcp
 
@@ -14,7 +16,7 @@ through the official ETABS API, with every call checked against the real signatu
 [![ETABS](https://img.shields.io/badge/ETABS-v22%2B-0078D7)](#version-support)
 [![MCP](https://img.shields.io/badge/MCP-stdio%20%7C%20HTTP-7C5CFF)](https://modelcontextprotocol.io)
 [![Tests](https://img.shields.io/badge/tests-39%20offline%20%2B%20live%20E2E-22C55E)](#tested-against-real-etabs)
-[![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-black)](LICENSE)
 
 [Quick start](#quick-start) · [Tools](#43-tools) · [How it works](#how-it-works) · [Testing](#tested-against-real-etabs) · [Configuration](#configuration)
 
@@ -40,19 +42,19 @@ ETABS has a huge automation API: **143 interfaces, 1,293 reachable methods, 58 e
 <tr>
 <td width="33%" valign="top">
 
-**🧭 Full coverage, zero guesswork**<br>
+**Full coverage, zero guesswork**<br>
 Search all 1,293 methods, read exact signatures with enum values, and call any of them. ByRef outputs come back as named JSON.
 
 </td>
 <td width="33%" valign="top">
 
-**👁 Sees like an engineer**<br>
+**Sees like an engineer**<br>
 `etabs_screenshot` returns the real ETABS window, GPU model views included, so the agent can check geometry and design colours.
 
 </td>
 <td width="33%" valign="top">
 
-**🗃 The Interactive Database**<br>
+**The Interactive Database**<br>
 Read any of ETABS's tables and **edit importable ones** (update / append / delete rows, then apply), with the import log returned.
 
 </td>
@@ -60,19 +62,19 @@ Read any of ETABS's tables and **edit importable ones** (update / append / delet
 <tr>
 <td valign="top">
 
-**🛡 Safe by design**<br>
+**Safe by design**<br>
 Destructive calls need `confirm=true`, internals are blocked, and `--read-only` mode refuses every write. Tool annotations tell clients what is safe.
 
 </td>
 <td valign="top">
 
-**🔁 Version-adaptive**<br>
+**Version-adaptive**<br>
 Finds every ETABS 22/23/24… install, loads *that* version's `ETABSv1.dll` and reflects its API live. Methods missing in older versions fail clearly.
 
 </td>
 <td valign="top">
 
-**🧠 Built for agents**<br>
+**Built for agents**<br>
 Errors carry a code and a **hint** ("model is locked, unlock first"). Units are explicit, tables convert to numbers, and batches report per-item results.
 
 </td>
@@ -185,18 +187,26 @@ etabs_call_api({
 
 ## What the agent sees
 
+The film above is cut from one recorded session. An agent built a 6-storey, 4×3-bay braced steel building
+through `etabs-mcp`, analysed it, ran the AISC 360-16 check, found 48 overstressed girders, upsized them,
+and re-ran everything until no member was over capacity.
+
 <table>
 <tr>
-<td><img src="docs/assets/etabs_model.png" alt="Model built by the agent"></td>
-<td><img src="docs/assets/etabs_design.png" alt="Steel design ratios after etabs_run_design"></td>
+<td width="33%"><img src="docs/assets/still_model.png" alt="Model: 354 members and 72 slabs"></td>
+<td width="33%"><img src="docs/assets/still_design.png" alt="Design: 48 members over capacity, max D/C 1.22"></td>
+<td width="33%"><img src="docs/assets/still_iterate.png" alt="Iterate: 0 members over capacity, max D/C 0.91"></td>
 </tr>
 <tr>
-<td align="center"><sub>Geometry after <code>etabs_add_frames</code> / <code>etabs_add_areas</code></sub></td>
-<td align="center"><sub>AISC 360-16 D/C ratios after <code>etabs_run_design</code></sub></td>
+<td align="center"><sub><b>Model</b> · 354 members, 72 slabs, 30 tool calls</sub></td>
+<td align="center"><sub><b>Design</b> · 48 over capacity, max D/C 1.22</sub></td>
+<td align="center"><sub><b>Iterate</b> · W24X76 × 48 → 0 over capacity, max D/C 0.91</sub></td>
 </tr>
 </table>
 
-Both images were captured by the agent itself through `etabs_screenshot` during the live test run.
+<img src="docs/assets/etabs_window.png" alt="The same model in the real ETABS window, captured by etabs_screenshot" width="100%">
+
+<p align="center"><sub>The same model in ETABS itself, captured by the agent with <code>etabs_screenshot</code>.</sub></p>
 
 ---
 
@@ -265,6 +275,10 @@ MCP subprocess, launches ETABS 23.3.2, and runs **42 tool calls with 0 failures 
 | Tables | read 26 section assignments, edit one through the Interactive Database, verify through the API |
 | Lifecycle | unlock, save (`.EDB`), screenshot, clean ETABS shutdown |
 
+**Showcase run** ([`tools/record_demo_data.py`](tools/record_demo_data.py)): a 6-storey braced steel building,
+354 members and 72 slabs. LL ΣFz = 9,720 kN (= 3 kPa × 30 m × 18 m × 6 floors, exact), wind ΣFx = 432 kN
+(= 18 kN × 24 joints, exact), T₁ = 1.71 s. The redesign loop took max D/C from 1.22 to 0.91.
+
 ```bash
 pip install -e ".[dev]"
 pytest                                   # offline suite
@@ -321,7 +335,9 @@ src/etabs_mcp/
   screenshot.py    window capture
   tools/           curated tools (connection, model, geometry, properties, loads, analysis, tables, view, api)
   data/etabs_api_spec.json   reflected API of ETABSv1.dll
-tools/ApiDump      .NET reflection dumper    tools/make_demo_gif.py   renders the README animation
+tools/ApiDump                .NET reflection dumper that produced the API spec
+tools/record_demo_data.py    drives the MCP tools against live ETABS and records the showcase data
+tools/render_hero.py         renders the README film and stills from that data
 tests/             offline suite + live end-to-end test
 ```
 
@@ -337,6 +353,6 @@ tests/             offline suite + live end-to-end test
 
 <div align="center">
 
-MIT © Moha2005269 · ETABS is a trademark of Computers and Structures, Inc. This project is independent and not affiliated with or endorsed by CSI.
+Apache-2.0 © Moha2005269 · ETABS is a trademark of Computers and Structures, Inc. This project is independent and not affiliated with or endorsed by CSI.
 
 </div>
