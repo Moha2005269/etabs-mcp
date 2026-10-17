@@ -16,6 +16,30 @@ MaterialType = Literal["Steel", "Concrete", "Rebar", "Tendon", "Aluminum", "Cold
 FrameShape = Literal["rectangle", "circle", "i_section", "tube", "pipe", "from_library"]
 
 
+def import_library_section(session: EtabsSession, name: str, material: str, library_file: str,
+                           library_section: str) -> dict[str, Any]:
+    """Import a steel shape from an ETABS section library under `name`, coping with ETABS's silent renames.
+    Returns {"section": final name, "note"?: ..., "already_existed"?: True}."""
+    before = set(names_list(session, "PropFrame.GetNameList"))
+    if name in before:
+        return {"section": name, "already_existed": True,
+                "note": f"'{name}' was already defined and was kept unchanged."}
+    session.call("PropFrame.ImportProp",
+                 {"Name": name, "MatProp": material, "FileName": library_file, "PropName": library_section},
+                 _internal=True)
+    # ETABS reports success but may import under another name (e.g. 'W14X90-1') when the requested one
+    # collides with an internal name; find what it really created.
+    created = [n for n in names_list(session, "PropFrame.GetNameList") if n not in before]
+    if not created:
+        raise EtabsCallFailed(
+            f"ETABS did not import '{library_section}' from {library_file}.",
+            path="PropFrame.ImportProp",
+            hint="Check the section name and file (e.g. AISC16.xml, Euro.xml) and that the material exists.",
+        )
+    final, note = _settle_name(session, "PropFrame", created[0], name)
+    return {"section": final, **({"note": note} if note else {})}
+
+
 def _settle_name(session: EtabsSession, iface: str, actual: str, wanted: str) -> tuple[str, str | None]:
     """Rename an item ETABS created under a substitute name back to the requested one, if ETABS allows it."""
     if actual == wanted:
@@ -187,25 +211,10 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
                 session.call("PropFrame.SetPipe", {**base, "T3": t3, "TW": tw}, _internal=True)
             else:
                 _require(library_file=library_file, library_section=library_section)
-                before = set(names_list(session, "PropFrame.GetNameList"))
-                if name in before:
-                    return {"section": name, "shape": shape, "already_existed": True,
-                            "note": f"'{name}' was already defined and was kept unchanged."}
-                session.call(
-                    "PropFrame.ImportProp",
-                    {**base, "FileName": library_file, "PropName": library_section},
-                    _internal=True,
-                )
-                # ETABS reports success but may import under another name (e.g. 'W14X90-1') when the
-                # requested one collides with an internal name; find what it really created.
-                created = [n for n in names_list(session, "PropFrame.GetNameList") if n not in before]
-                if not created:
-                    raise EtabsCallFailed(
-                        f"ETABS did not import '{library_section}' from {library_file}.",
-                        path="PropFrame.ImportProp",
-                        hint="Check the section name and file (e.g. AISC16.xml, Euro.xml) and that the material exists.",
-                    )
-                final, note = _settle_name(session, "PropFrame", created[0], name)
+                result = import_library_section(session, name, material, library_file, library_section)
+                if result.get("already_existed"):
+                    return {"section": name, "shape": shape, **result}
+                final, note = result["section"], result.get("note")
                 return {"section": final, "shape": shape, "material": material, **({"note": note} if note else {})}
             return {"section": name, "shape": shape, "material": material}
 

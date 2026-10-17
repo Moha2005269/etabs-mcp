@@ -158,8 +158,8 @@ async def test_analysis_results_and_design(harness):
     assert run["all_requested_finished"]
     flags = harness.called("cAnalyze.SetRunCaseFlag")
     assert flags[0] == {"Name": "", "Run": False, "All": True} and flags[1]["Name"] == "Dead"
-    drifts = await harness.call("etabs_get_results", result="story_drifts", where={"Story": "Story2"})
-    assert drifts["total_rows"] == 1 and drifts["rows"][0]["Drift"] == 0.0021
+    drifts = await harness.call("etabs_get_results", result="story_drifts", where={"Story": "Story2", "OutputCase": "EQX"})
+    assert drifts["total_rows"] == 1 and drifts["rows"][0]["Drift"] == 0.004
     assert harness.called("cDatabaseTables.SetLoadCasesSelectedForDisplay")[-1]["LoadCaseList"] == ["Dead", "Live", "Modal"]
     design = await harness.call("etabs_run_design", kind="steel")
     assert design["failing"] == 1 and design["members"][0]["ratio"] == 1.08

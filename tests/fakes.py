@@ -63,6 +63,24 @@ class FakeEtabs:
         self.tables["Functions - Response Spectrum - ASCE7-16"] = (
             ["Name", "Ss", "S1", "TL", "SiteClass", "Fa", "Fv", "DampRatio", "GUID"], [])
         self.tables["Joint Displacements"] = (["Story", "Label", "UniqueName", "OutputCase", "Ux", "Uy", "Uz"], [])
+        self.tables["Grid Definitions - Grid Lines"] = (
+            ["Name", "LineType", "ID", "Ordinate", "Angle", "X1", "Y1", "X2", "Y2", "BubbleLoc", "Visible"], [])
+        self.area_props: dict[str, str] = {}
+        # Post-analysis tables used by the code checks (EQX and RSX in X).
+        self.tables["Story Drifts"] = (["Story", "OutputCase", "Direction", "Drift"], [
+            ["Story2", "EQX", "X", "0.004"], ["Story1", "EQX", "X", "0.003"],
+            ["Story2", "RSX", "X", "0.002"], ["Story1", "Dead", "X", "0.0012"]])
+        self.tables["Story Max Over Avg Drifts"] = (["Story", "OutputCase", "Direction", "Ratio"], [
+            ["Story2", "EQX", "X", "1.31"], ["Story1", "EQX", "X", "1.05"]])
+        self.tables["Story Stiffness"] = (["Story", "OutputCase", "StepNumber", "StiffX", "StiffY"], [
+            ["Story3", "EQX", "1", "1000", "0"], ["Story2", "EQX", "1", "900", "0"], ["Story1", "EQX", "1", "500", "0"]])
+        self.tables["Mass Summary by Story"] = (["Story", "UX", "UY", "UZ"], [
+            ["Story3", "100", "100", "0"], ["Story2", "100", "100", "0"], ["Story1", "180", "180", "0"]])
+        self.tables["Modal Participating Mass Ratios"] = (["Case", "Mode", "Period", "SumUX", "SumUY"], [
+            ["Modal", "1", "0.8", "0.70", "0.00"], ["Modal", "2", "0.7", "0.70", "0.75"], ["Modal", "3", "0.3", "0.93", "0.95"]])
+        self.tables["Base Reactions"] = (["OutputCase", "CaseType", "FX", "FY", "FZ"], [
+            ["EQX", "LinStatic", "-500", "0", "0"], ["RSX", "LinRespSpec", "400", "0", "0"]])
+        self.rs_sf = [1.2258]
 
     def point(self, xyz: tuple[float, float, float]) -> str:
         for name, p in self.points.items():
@@ -159,6 +177,7 @@ class FakeBackend:
 
         def add_area(a: dict[str, Any]) -> tuple[int, dict]:
             name = str(len(s().areas) + 1)
+            s().area_props[name] = a["PropName"] if a["PropName"] is not DEFAULT else "Default"
             s().areas[name] = list(zip(a["X"], a["Y"], a["Z"]))
             for p in s().areas[name]:
                 s().point(p)
@@ -210,7 +229,7 @@ class FakeBackend:
 
         def fields_in_table(a: dict[str, Any]) -> tuple[int, dict]:
             fields, _ = s().tables.get(a["TableKey"], ([], []))
-            units = ["" if f != "Drift" else "unitless" for f in fields]
+            units = ["unitless" if f in ("Drift", "FX", "FY", "FZ") else "" for f in fields]
             return 0, {"TableVersion": 1, "NumberFields": len(fields), "FieldKey": fields, "FieldName": fields,
                        "Description": fields, "UnitsString": units, "IsImportable": [True] * len(fields)}
 
@@ -288,7 +307,53 @@ class FakeBackend:
             s().filename = a["FileName"]
             return 0, {}
 
+        def case_type(a: dict[str, Any]) -> tuple[int, dict]:
+            kinds = {"EQX": ("LinearStatic", "Quake"), "RSX": ("ResponseSpectrum", "Quake"),
+                     "Dead": ("LinearStatic", "Dead")}
+            ct, dt = kinds.get(a["Name"], ("LinearStatic", "Other"))
+            return 0, {"CaseType": ct, "DesignType": dt}
+
+        def rs_loads(a: dict[str, Any]) -> tuple[int, dict]:
+            return 0, {"NumberLoads": 1, "LoadName": ["U1"], "Func": ["RS1"], "SF": list(s().rs_sf),
+                       "CSys": ["Global"], "Ang": [0.0]}
+
+        def rs_set(a: dict[str, Any]) -> tuple[int, dict]:
+            s().rs_sf = list(a["SF"])
+            ratio = s().rs_sf[0] / 1.2258
+            rows = s().tables["Base Reactions"][1]
+            rows[1] = ["RSX", "LinRespSpec", str(400 * ratio), "0", "0"]
+            return 0, {}
+
+        def piers(a: dict[str, Any]) -> tuple[int, dict]:
+            return 0, {"Story": ["Story2", "Story1"], "PierLabel": ["P1", "P1"], "Station": ["Top", "Bottom"],
+                       "DesignType": ["Uniform", "Uniform"], "PierSecType": ["Uniform", "Uniform"],
+                       "EdgeBar": ["", ""], "EndBar": ["", ""], "BarSpacing": [0.3, 0.3], "ReinfPercent": [0.25, 0.4],
+                       "CurrPercent": [0.25, 0.4], "DCRatio": [0.42, 0.81], "ShearAv": [0.0, 0.0], "BZoneL": [0, 0],
+                       "BZoneR": [0, 0], "WarnMsg": ["", ""], "ErrMsg": ["No Message", "No Message"]}
+
+        def conc_beam(a: dict[str, Any]) -> tuple[int, dict]:
+            return 0, {"NumberItems": 3, "FrameName": ["B1", "B1", "B2"], "Location": [0.0, 3.0, 0.0],
+                       "TopCombo": ["C1"] * 3, "TopArea": [0.0006, 0.0009, 0.0004], "BotCombo": ["C1"] * 3,
+                       "BotArea": [0.0003, 0.0005, 0.0002], "VMajorCombo": ["C1"] * 3, "VMajorArea": [0.0004] * 3,
+                       "TLCombo": ["C1"] * 3, "TLArea": [0.0] * 3, "TTCombo": ["C1"] * 3, "TTArea": [0.0] * 3,
+                       "ErrorSummary": ["", "", ""], "WarningSummary": ["", "", ""]}
+
+        def conc_col(a: dict[str, Any]) -> tuple[int, dict]:
+            return 0, {"NumberItems": 2, "FrameName": ["C1", "C2"], "MyOption": [1, 1], "Location": [0.0, 0.0],
+                       "PMMCombo": ["C1", "C1"], "PMMArea": [0.002, 0.003], "PMMRatio": [0.6, 0.9],
+                       "VMajorCombo": ["C1"] * 2, "AVMajor": [0.0] * 2, "VMinorCombo": ["C1"] * 2, "AVMinor": [0.0] * 2,
+                       "ErrorSummary": ["", ""], "WarningSummary": ["", ""]}
+
         return {
+            "cLoadCases.GetTypeOAPI_1": case_type,
+            "cCaseResponseSpectrum.GetLoads": rs_loads,
+            "cCaseResponseSpectrum.SetLoads": rs_set,
+            "cDesignShearWall.GetPierSummaryResults": piers,
+            "cDesignConcrete.GetSummaryResultsBeam": conc_beam,
+            "cDesignConcrete.GetSummaryResultsColumn": conc_col,
+            "cDesignConcrete.GetCode": lambda a: (0, {"CodeName": "ACI 318-19"}),
+            "cAreaObj.GetProperty": lambda a: (0, {"PropName": s().area_props.get(a["Name"], "Default")}),
+            "cPierLabel.GetNameList": lambda a: (0, {"NumberNames": 1, "MyName": ["P1"]}),
             "cAutoSeismic.SetASCE716_1": seismic,
             "cFile.ExportFile": export,
             "cFile.OpenFile": open_file,

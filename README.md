@@ -1,8 +1,9 @@
+<!-- mcp-name: io.github.moha2005269/etabs-mcp -->
 <div align="center">
 
-<img src="docs/assets/hero.webp" alt="An AI agent models, analyses, designs and iterates a 6-storey steel building in ETABS through etabs-mcp" width="100%">
+<img src="https://raw.githubusercontent.com/Moha2005269/etabs-mcp/main/docs/assets/hero.webp" alt="An AI agent models, analyses, designs and iterates a 6-storey steel building in ETABS through etabs-mcp" width="100%">
 
-<sub>Rendered from a live ETABS 23 session: every member, deflection and D/C ratio is real. <a href="docs/assets/hero.mp4">MP4</a></sub>
+<sub>Rendered from a live ETABS 23 session: every member, deflection and D/C ratio is real. <a href="https://github.com/Moha2005269/etabs-mcp/raw/main/docs/assets/hero.mp4">MP4</a></sub>
 
 # etabs-mcp
 
@@ -18,7 +19,7 @@ through the official ETABS API, with every call checked against the real signatu
 [![Tests](https://img.shields.io/badge/tests-39%20offline%20%2B%20live%20E2E-22C55E)](#tested-against-real-etabs)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-black)](LICENSE)
 
-[Quick start](#quick-start) · [Tools](#60-tools) · [How it works](#how-it-works) · [Testing](#tested-against-real-etabs) · [Configuration](#configuration)
+[Quick start](#quick-start) · [Tools](#71-tools) · [How it works](#how-it-works) · [Testing](#tested-against-real-etabs) · [Configuration](#configuration)
 
 </div>
 
@@ -33,7 +34,7 @@ ETABS has a huge automation API: **143 interfaces, 1,293 reachable methods, 58 e
 
 | | |
 |---|---|
-| **60 curated tools** | Engineer-shaped workflows: `etabs_new_model`, `etabs_add_frames`, `etabs_define_seismic_load`, `etabs_run_analysis`, `etabs_get_results`, `etabs_run_design`, `etabs_render_view`, `etabs_find_objects`, `etabs_edit_table`, and more. |
+| **71 curated tools** | Engineer-shaped workflows: `etabs_generate_building`, `etabs_define_seismic_load`, `etabs_code_checks`, `etabs_run_analysis`, `etabs_get_results`, `etabs_run_design`, `etabs_render_view`, `etabs_find_objects`, `etabs_edit_table`, and more. |
 | **The entire API** | `etabs_search_api` → `etabs_describe_api` → `etabs_call_api`. Every ETABS method is callable with plain JSON, validated against the live signature of the ETABS version you run. |
 
 ## Highlights
@@ -87,16 +88,20 @@ Errors carry a code and a **hint**. Lengths accept `"6 m"` or `"20 ft"`, long ru
 
 **Requirements:** Windows · ETABS 22 or newer (licensed) · Python 3.10+ · the .NET 8 Desktop Runtime (installed with ETABS 22+).
 
-Download the wheel from the [latest release](https://github.com/Moha2005269/etabs-mcp/releases/latest), then:
+**Claude Desktop, one click:** download `etabs-mcp-0.3.0-py3XX.mcpb` for your Python version from the
+[latest release](https://github.com/Moha2005269/etabs-mcp/releases/latest) and open it. Claude Desktop installs
+the extension with every dependency bundled.
+
+**Everything else:** install the package from the release:
 
 ```bash
-pip install etabs_mcp-0.2.0-py3-none-any.whl
+pip install "https://github.com/Moha2005269/etabs-mcp/releases/download/v0.3.0/etabs_mcp-0.3.0-py3-none-any.whl"
 ```
 
-Or install straight from GitHub:
+Or from GitHub:
 
 ```bash
-pip install "git+https://github.com/Moha2005269/etabs-mcp@v0.2.0"
+pip install "git+https://github.com/Moha2005269/etabs-mcp@v0.3.0"
 ```
 
 Check that it finds ETABS:
@@ -160,7 +165,7 @@ The server connects on its own: it attaches to a running ETABS, or launches one.
 
 ---
 
-## 60 tools
+## 71 tools
 
 | Area | Tools |
 |---|---|
@@ -170,12 +175,17 @@ The server connects on its own: it attaches to a running ETABS, or launches one.
 | **Properties** | `etabs_list_properties` · `etabs_define_material` · `etabs_define_frame_section` · `etabs_define_area_section` |
 | **Loads** | `etabs_define_load_patterns` · `etabs_assign_loads` · `etabs_define_combinations` · `etabs_list_load_definitions` |
 | **Lateral system** | `etabs_define_seismic_load` (ASCE 7-16 ELF) · `etabs_define_wind_load` (ASCE 7-16/7-22, other codes via fields) · `etabs_define_response_spectrum` · `etabs_set_mass_source` · `etabs_assign_diaphragm` · `etabs_set_modal_case` |
-| **Analysis & design** | `etabs_run_analysis` · `etabs_analysis_status` · `etabs_unlock_model` · `etabs_get_results` · `etabs_run_design` · `etabs_get_design_summary` |
+| **Generate** | `etabs_generate_building`: grids, stories, steel moment/braced or concrete frame/wall systems, slabs, supports, diaphragm and gravity loads in one call |
+| **Analysis & design** | `etabs_run_analysis` · `etabs_analysis_status` · `etabs_unlock_model` · `etabs_get_results` · `etabs_run_design` · `etabs_get_design_summary` · `etabs_design_codes` |
+| **Concrete & walls** | `etabs_get_concrete_design` (beams, columns, joints) · `etabs_run_shear_wall_design` · `etabs_get_wall_design` (piers, spandrels) · `etabs_get_slab_design` (strips, punching) |
+| **Code checks** | `etabs_code_checks` (drift, torsional/soft-story/weight irregularity, modal mass, RS vs ELF) · `etabs_scale_response_spectrum` |
 | **Background jobs** | `etabs_job_status` · `etabs_job_wait`: analysis and design with `background=true` never hit client timeouts |
 | **Database tables** | `etabs_list_tables` · `etabs_get_table` · `etabs_edit_table` |
 | **See & query** | `etabs_render_view` · `etabs_find_objects` · `etabs_screenshot` · `etabs_show_window` · `etabs_refresh_view` |
 | **Track & undo** | `etabs_what_changed` · `etabs_checkpoint` · `etabs_list_checkpoints` · `etabs_restore_checkpoint` |
 | **Export & report** | `etabs_export_model` (full `.e2k` text, paged) · `etabs_design_report` (Markdown) · `etabs_assign_label` (groups, piers, spandrels) |
+| **Menus & dialogs** | `etabs_menu` (browse and run ETABS menu commands the API lacks) · `etabs_dialogs` |
+| **Instances** | `etabs_instances`: drive several ETABS at once (`etabs_connect(instance=...)`), switch, remove |
 | **Entire API** | `etabs_search_api` · `etabs_describe_api` · `etabs_call_api` · `etabs_call_api_batch` |
 
 Plus **resources** (`etabs://api/interfaces`, `etabs://api/interface/{name}`, `etabs://api/enum/{name}`,
@@ -210,9 +220,9 @@ and re-ran everything until no member was over capacity.
 
 <table>
 <tr>
-<td width="33%"><img src="docs/assets/still_model.png" alt="Model: 354 members and 72 slabs"></td>
-<td width="33%"><img src="docs/assets/still_design.png" alt="Design: 48 members over capacity, max D/C 1.22"></td>
-<td width="33%"><img src="docs/assets/still_iterate.png" alt="Iterate: 0 members over capacity, max D/C 0.91"></td>
+<td width="33%"><img src="https://raw.githubusercontent.com/Moha2005269/etabs-mcp/main/docs/assets/still_model.png" alt="Model: 354 members and 72 slabs"></td>
+<td width="33%"><img src="https://raw.githubusercontent.com/Moha2005269/etabs-mcp/main/docs/assets/still_design.png" alt="Design: 48 members over capacity, max D/C 1.22"></td>
+<td width="33%"><img src="https://raw.githubusercontent.com/Moha2005269/etabs-mcp/main/docs/assets/still_iterate.png" alt="Iterate: 0 members over capacity, max D/C 0.91"></td>
 </tr>
 <tr>
 <td align="center"><sub><b>Model</b> · 354 members, 72 slabs, 30 tool calls</sub></td>
@@ -228,9 +238,9 @@ what the ETABS API cannot switch the GUI to.
 
 <table>
 <tr>
-<td width="33%"><img src="docs/assets/view_design.png" alt="Members coloured by design ratio"></td>
-<td width="33%"><img src="docs/assets/view_deformed.png" alt="Deformed shape under ASCE 7-16 seismic load"></td>
-<td width="33%"><img src="docs/assets/view_sections.png" alt="Light theme, coloured by section"></td>
+<td width="33%"><img src="https://raw.githubusercontent.com/Moha2005269/etabs-mcp/main/docs/assets/view_design.png" alt="Members coloured by design ratio"></td>
+<td width="33%"><img src="https://raw.githubusercontent.com/Moha2005269/etabs-mcp/main/docs/assets/view_deformed.png" alt="Deformed shape under ASCE 7-16 seismic load"></td>
+<td width="33%"><img src="https://raw.githubusercontent.com/Moha2005269/etabs-mcp/main/docs/assets/view_sections.png" alt="Light theme, coloured by section"></td>
 </tr>
 <tr>
 <td align="center"><sub><code>color_by="design_ratio"</code></sub></td>
@@ -239,7 +249,7 @@ what the ETABS API cannot switch the GUI to.
 </tr>
 </table>
 
-<img src="docs/assets/etabs_window.png" alt="The same model in the real ETABS window, captured by etabs_screenshot" width="100%">
+<img src="https://raw.githubusercontent.com/Moha2005269/etabs-mcp/main/docs/assets/etabs_window.png" alt="The same model in the real ETABS window, captured by etabs_screenshot" width="100%">
 
 <p align="center"><sub>The same model in ETABS itself, captured by the agent with <code>etabs_screenshot</code>.</sub></p>
 
@@ -253,7 +263,7 @@ flowchart LR
 
     subgraph S["etabs-mcp"]
         direction TB
-        T["60 curated tools<br/>+ generic dispatcher"] --> P["Policy<br/>read-only · confirm · blocked"]
+        T["71 curated tools<br/>+ generic dispatcher"] --> P["Policy<br/>read-only · confirm · blocked"]
         P --> C["Coercion<br/>JSON → typed args, ByRef placeholders"]
         C --> K["API catalog<br/>live reflection of ETABSv1.dll"]
         K --> W["Single STA worker thread"]
@@ -291,7 +301,7 @@ or decompiles the ETABS engine. Its API surface was mapped from the shipped inte
 
 ## Tested against real ETABS
 
-**Offline (CI):** 49 tests. Every curated tool runs through FastMCP against a fake backend that resolves and
+**Offline (CI):** 58 tests. Every curated tool runs through FastMCP against a fake backend that resolves and
 coerces **every call against the real `ETABSv1.dll` catalog**. A wrong method or parameter name fails exactly as it
 would in ETABS.
 
@@ -324,6 +334,16 @@ ETABS on a 3-storey, 63-member model:
 | Seeing | design-ratio, deformed, section and plan renders; AISC 341 design errors flagged, never shown as safe |
 | Export & report | `.e2k` sections, Markdown report with reactions, modes, drifts and design |
 
+**Live v0.3 suite:** [`tests/live/test_live_v3.py`](tests/live/test_live_v3.py):
+
+| Step | Verified |
+|---|---|
+| Generator | 4-storey concrete shear-wall building on a non-uniform grid (8/6/8 m); steel braced building in kip-ft |
+| Hand check | steel building LL ΣFz = 0.05 ksf × 90 ft × 50 ft × 3 floors, exact |
+| Code checks | drift (Cd-amplified), torsion, soft story, weight, modal mass (12 modes), RS vs ELF |
+| RS scaling | response spectrum scaled to 100% of ELF, re-analysed, ratio 1.00 verified |
+| Concrete & walls | ACI 318-19 beams, all 48 columns, joints; shear walls designed through the menu, pier results read back |
+
 **Showcase run** ([`tools/record_demo_data.py`](tools/record_demo_data.py)): a 6-storey braced steel building,
 354 members and 72 slabs. LL ΣFz = 9,720 kN (= 3 kPa × 30 m × 18 m × 6 floors, exact), wind ΣFx = 432 kN
 (= 18 kN × 24 joints, exact), T₁ = 1.71 s. The redesign loop took max D/C from 1.22 to 0.91.
@@ -349,6 +369,15 @@ ETABS_MCP_ARTIFACTS=docs/live pytest tests/live --live -s   # drives your local 
 | `ETABS_MCP_RUNTIME` | `coreclr` | .NET host for pythonnet (`netfx` as a fallback) |
 | `ETABS_MCP_MAX_ARRAY_ITEMS` | 2000 | Cap on array lengths returned by `etabs_call_api` |
 | `ETABS_MCP_MAX_TABLE_ROWS` | 500 | Default page size for tables and results |
+| `ETABS_MCP_AUDIT_LOG` / `--audit-log` | off | Append every model-changing call (time, instance, call, arguments, result) to a JSON-lines file |
+| `ETABS_MCP_TOKEN` / `--token` | none | Bearer token for `--transport streamable-http/sse`; required to listen beyond localhost |
+
+### Publishing (maintainers)
+
+Tagging `vX.Y.Z` runs [`release.yml`](.github/workflows/release.yml), which tests, builds the wheel, sdist and
+`.mcpb` bundles, and publishes the GitHub release. PyPI and the MCP Registry use tokenless trusted publishing:
+add a trusted publisher on pypi.org (this repo, workflow `release.yml`, environment `pypi`), then set the
+repository variable `PUBLISH_PYPI=true`. Later tags publish to PyPI and list the server in the MCP Registry.
 
 ### Version support
 
@@ -368,6 +397,9 @@ ETABS_MCP_ARTIFACTS=docs/live pytest tests/live --live -s   # drives your local 
 | destructive | `Delete*`, new/open model, unlock (deletes results), close ETABS | needs `confirm=true` |
 | blocked | `InternalExec`, plugin hooks, active-object switching | never callable |
 
+Menu commands run through `etabs_menu` need `confirm=true` as well, and over HTTP every request must carry the
+bearer token.
+
 ---
 
 ## Project layout
@@ -384,12 +416,16 @@ src/etabs_mcp/
   screenshot.py    window capture
   render.py        offscreen model renderer (etabs_render_view)
   units.py         unit-aware lengths ("6 m", "20 ft", "250 mm")
-  tools/           curated tools (connection, model, geometry, properties, loads, lateral, analysis,
-                   tables, view, insight, api)
+  gui.py           ETABS menu commands through Windows UI Automation
+  http.py          HTTP transports with bearer-token auth
+  tools/           curated tools (connection, model, generator, geometry, properties, loads, lateral,
+                   analysis, concrete, checks, tables, view, insight, api)
+mcpb/              Claude Desktop extension manifest    server.json   MCP Registry entry
   data/etabs_api_spec.json   reflected API of ETABSv1.dll
 tools/ApiDump                .NET reflection dumper that produced the API spec
 tools/record_demo_data.py    drives the MCP tools against live ETABS and records the showcase data
 tools/render_hero.py         renders the README film and stills from that data
+tools/build_mcpb.py          builds the Claude Desktop extensions
 tests/             offline suite + live end-to-end test
 ```
 

@@ -524,8 +524,10 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
                 if label not in names_list(session, "GroupDef.GetNameList"):
                     session.call("GroupDef.SetGroup", {"Name": label}, _internal=True)
             elif label_type == "pier":
-                session.call("PierLabel.SetPier", {"Name": label}, _internal=True)
-            else:
+                # ETABS rejects SetPier for an existing label (and labels walls 'P1'... automatically).
+                if label not in names_list(session, "PierLabel.GetNameList"):
+                    session.call("PierLabel.SetPier", {"Name": label}, _internal=True)
+            elif label not in names_list(session, "SpandrelLabel.GetNameList"):
                 session.call("SpandrelLabel.SetSpandrel", {"Name": label, "IsMultiStory": False}, _internal=True)
             iface = OBJ_INTERFACE[object_kind]
             ok, errors = 0, []

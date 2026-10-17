@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import itertools
+import json
 import logging
 import threading
 import time
@@ -15,8 +16,8 @@ from typing import Any, Protocol, TypeVar
 
 from . import policy
 from .catalog import ApiCatalog, MethodSig
-from .coerce import build_result, choose_overload, coerce_arguments
-from .errors import BusyError, EtabsCallFailed, EtabsMcpError, NotConnectedError
+from .coerce import build_result, choose_overload, coerce_arguments, jsonable
+from .errors import ArgumentValidationError, BusyError, EtabsCallFailed, EtabsMcpError, NotConnectedError
 from .settings import Settings
 
 log = logging.getLogger(__name__)
@@ -84,18 +85,50 @@ class Job:
 
 
 class EtabsSession:
-    def __init__(self, settings: Settings, backend: Backend | None = None):
+    def __init__(self, settings: Settings, backend: Backend | None = None,
+                 backend_factory: Callable[[], Backend] | None = None):
         self.settings = settings
-        if backend is None:
-            from .dotnet import LiveBackend
+        if backend_factory is None:
+            def backend_factory() -> Backend:
+                from .dotnet import LiveBackend
 
-            backend = LiveBackend(settings)
-        self.backend = backend
+                return LiveBackend(settings)
+        self._factory = backend_factory
+        # Several ETABS instances can be driven from one server; tools act on the active one.
+        self._backends: dict[str, Backend] = {"default": backend or backend_factory()}
+        self.active_instance = "default"
+        self._audit_lock = threading.Lock()
         self._bundled: ApiCatalog | None = None
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="etabs-api")
         self._worker_ident: int | None = None
         self.jobs: dict[str, Job] = {}
         self._job_ids = itertools.count(1)
+
+    # ---------------------------------------------------------------- instances
+
+    @property
+    def backend(self) -> Backend:
+        return self._backends[self.active_instance]
+
+    @property
+    def instances(self) -> dict[str, Backend]:
+        return dict(self._backends)
+
+    def use_instance(self, name: str, *, create: bool = False) -> Backend:
+        if name not in self._backends:
+            if not create:
+                raise NotConnectedError(f"No ETABS instance named '{name}'.",
+                                        hint=f"Instances: {sorted(self._backends)}. Connect one with etabs_connect(instance=...).")
+            self._backends[name] = self._factory()
+        self.active_instance = name
+        return self._backends[name]
+
+    def drop_instance(self, name: str) -> None:
+        if name == "default":
+            raise ArgumentValidationError("The 'default' instance cannot be removed; disconnect it instead.")
+        self._backends.pop(name, None)
+        if self.active_instance == name:
+            self.active_instance = "default"
 
     # ---------------------------------------------------------------- threading
 
@@ -216,10 +249,15 @@ class EtabsSession:
         target = self.backend.root(resolved.root)
         for prop in resolved.chain:
             target = self.backend.get_property(target, prop)
-        ret, outputs = self.backend.invoke(target, sig, values)
+        try:
+            ret, outputs = self.backend.invoke(target, sig, values)
+        except EtabsMcpError as exc:
+            self._audit(sig, resolved.path, args, None, exc.code)
+            raise
         result = build_result(
             sig, resolved.path, ret, outputs, max_items=max_items or self.settings.max_array_items
         )
+        self._audit(sig, resolved.path, args, result.get("ok", True), None)
         if check and result.get("ok") is False:
             raise EtabsCallFailed(
                 f"ETABS returned status {ret} from {resolved.path}.",
@@ -239,6 +277,22 @@ class EtabsSession:
 
     def value(self, path: str, **kwargs: Any) -> Any:
         return self.call(path, kwargs, _internal=True, max_items=10**9).get("value")
+
+    def _audit(self, sig: MethodSig, path: str, args: Any, ok: bool | None, error: str | None) -> None:
+        """Append model-changing calls to the audit log (JSON lines) when one is configured."""
+        if self.settings.audit_log is None or policy.classify(sig) == "read":
+            return
+        safe, _ = jsonable(args if isinstance(args, (dict, list)) else {}, max_items=50)
+        entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "instance": self.active_instance, "call": path,
+                 "safety": policy.classify(sig), "args": safe, "ok": ok}
+        if error:
+            entry["error"] = error
+        try:
+            self.settings.audit_log.parent.mkdir(parents=True, exist_ok=True)
+            with self._audit_lock, self.settings.audit_log.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, default=str) + "\n")
+        except OSError as exc:
+            log.warning("audit log write failed: %s", exc)
 
     def failure_hint(self, sig: MethodSig) -> str:
         hints = []

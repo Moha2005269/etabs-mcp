@@ -73,6 +73,8 @@ def _search_roots(extra: Iterable[Path]) -> list[Path]:
         base = os.environ.get(var)
         if base:
             roots.append(Path(base) / "Computers and Structures")
+    # Hosts may start servers with a minimal environment that lacks ProgramFiles.
+    roots += [Path("C:/Program Files/Computers and Structures"), Path("C:/Program Files (x86)/Computers and Structures")]
     seen, unique = set(), []
     for r in roots:
         key = str(r).lower()

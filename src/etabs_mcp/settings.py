@@ -39,6 +39,9 @@ class Settings:
     max_array_items: int = 2000
     max_table_rows: int = 500
     extra_search_dirs: list[Path] = field(default_factory=list)
+    # Production: JSON-lines log of every call that changes the model, and a bearer token for HTTP transports.
+    audit_log: Path | None = None
+    http_token: str | None = None
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -56,4 +59,6 @@ class Settings:
             runtime=os.environ.get("ETABS_MCP_RUNTIME", "coreclr").strip().lower() or "coreclr",
             max_array_items=_env_int("ETABS_MCP_MAX_ARRAY_ITEMS") or 2000,
             max_table_rows=_env_int("ETABS_MCP_MAX_TABLE_ROWS") or 500,
+            audit_log=Path(os.environ["ETABS_MCP_AUDIT_LOG"]) if os.environ.get("ETABS_MCP_AUDIT_LOG") else None,
+            http_token=os.environ.get("ETABS_MCP_TOKEN") or None,
         )

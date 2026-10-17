@@ -9,7 +9,22 @@ from mcp.server.fastmcp import FastMCP
 from . import __version__
 from .session import EtabsSession
 from .settings import Settings
-from .tools import analysis, api, connection, geometry, insight, lateral, loads, model, properties, tables, view
+from .tools import (
+    analysis,
+    api,
+    checks,
+    concrete,
+    connection,
+    generator,
+    geometry,
+    insight,
+    lateral,
+    loads,
+    model,
+    properties,
+    tables,
+    view,
+)
 
 INSTRUCTIONS = """\
 This server drives CSI ETABS (v22 and newer) on this machine through its official API, so you can do what an
@@ -60,7 +75,7 @@ def create_server(settings: Settings | None = None, session: EtabsSession | None
     mcp = FastMCP("etabs", instructions=INSTRUCTIONS)
     mcp._etabs_session = session  # type: ignore[attr-defined]  # exposed for tests and shutdown
 
-    for module in (connection, model, geometry, properties, loads, lateral, analysis, tables, view, insight, api):
+    for module in (connection, model, geometry, generator, properties, loads, lateral, analysis, concrete, checks, tables, view, insight, api):
         module.register(mcp, session)
 
     @mcp.resource("etabs://api/interfaces", mime_type="application/json")

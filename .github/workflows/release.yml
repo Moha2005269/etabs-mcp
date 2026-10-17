@@ -2,32 +2,90 @@ name: Release
 on:
   push:
     tags: ["v*"]
-permissions:
-  contents: write
+
 jobs:
-  release:
+  build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Test
         run: |
           pip install -e ".[dev]"
           ruff check src tests
           pytest -q
-      - name: Build wheel and sdist
-        run: |
-          pip install build
-          python -m build
       - name: Check the tag matches the package version
         shell: bash
         run: |
           v=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           test "v$v" = "${GITHUB_REF_NAME}"
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+      - name: Build wheel and sdist
+        run: |
+          pip install build
+          python -m build
+      - name: Build Claude Desktop extensions (.mcpb), one per Python version
+        shell: bash
+        run: |
+          for py in 3.11 3.12 3.13; do python tools/build_mcpb.py --python $py dist/etabs_mcp-*.whl; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  github-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           body_path: RELEASE_NOTES.md
+
+  # PyPI uses trusted publishing (no token). Enable it once: add a trusted publisher for this repo and the
+  # workflow 'release.yml' (environment 'pypi') on pypi.org, then set the repository variable PUBLISH_PYPI=true.
+  pypi:
+    needs: build
+    if: vars.PUBLISH_PYPI == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Keep only the Python packages
+        run: rm -f dist/*.mcpb
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  mcp-registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+      - name: Wait for PyPI to serve the new version
+        run: |
+          v=$(python3 -c "import json;print(json.load(open('server.json'))['version'])")
+          for i in $(seq 1 30); do curl -sf "https://pypi.org/pypi/etabs-mcp/$v/json" >/dev/null && exit 0; sleep 10; done; exit 1
+      - run: ./mcp-publisher login github-oidc
+      - name: Publish server to MCP Registry
+        run: ./mcp-publisher publish

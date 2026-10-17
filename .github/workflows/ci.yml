@@ -15,5 +15,5 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests tools/render_hero.py tools/record_demo_data.py
+      - run: ruff check src tests tools/render_hero.py tools/record_demo_data.py tools/build_mcpb.py
       - run: pytest -q

@@ -25,6 +25,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--read-only", action="store_true", help="Refuse every call that modifies the model.")
     parser.add_argument("--allow-destructive", action="store_true", help="Skip confirm=true for destructive calls.")
     parser.add_argument("--list-installs", action="store_true", help="Print detected ETABS installs and exit.")
+    parser.add_argument("--token", help="Bearer token required on HTTP transports (env ETABS_MCP_TOKEN).")
+    parser.add_argument("--audit-log", help="Append every model-changing call to this JSON-lines file (env ETABS_MCP_AUDIT_LOG).")
     parser.add_argument("--log-level", default="WARNING")
     args = parser.parse_args(argv)
 
@@ -45,6 +47,10 @@ def main(argv: list[str] | None = None) -> None:
         settings.read_only = True
     if args.allow_destructive:
         settings.allow_destructive = True
+    if args.token:
+        settings.http_token = args.token
+    if args.audit_log:
+        settings.audit_log = Path(args.audit_log)
 
     if args.list_installs:
         from .discovery import find_installations, find_running_etabs
@@ -58,11 +64,13 @@ def main(argv: list[str] | None = None) -> None:
     from .server import create_server
 
     mcp = create_server(settings)
-    if args.transport != "stdio":
-        mcp.settings.host = args.host
-        mcp.settings.port = args.port
     try:
-        mcp.run(transport=args.transport)
+        if args.transport == "stdio":
+            mcp.run(transport="stdio")
+        else:
+            from .http import serve
+
+            serve(mcp, args.transport, args.host, args.port, settings.http_token)
     finally:
         mcp._etabs_session.shutdown()  # type: ignore[attr-defined]
 
