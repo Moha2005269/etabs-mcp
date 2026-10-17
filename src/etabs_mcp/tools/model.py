@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from ..errors import ITEM_ERRORS, ArgumentValidationError, ConfirmationRequired
 from ..session import EtabsSession
+from ..units import LengthConverter
 from .common import DESTRUCTIVE, READ, WRITE, model_file, model_has_objects, names_list
 
 Units = Literal[
@@ -20,7 +21,7 @@ Units = Literal[
 
 class StoryInput(BaseModel):
     name: str
-    height: float = Field(gt=0, description="Story height in present length units.")
+    height: float | str = Field(description="Story height: number in present units or e.g. '3.5 m', '12 ft'.")
     is_master: bool = False
     similar_to: str = Field("", description="Master story this story is similar to ('' for none).")
     splice_above: bool = False
@@ -112,12 +113,12 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
         ] = "grid_only",
         units: Annotated[Units, Field(description="Units for the new model.")] = "kN_m_C",
         number_of_stories: Annotated[int, Field(ge=1, le=500)] = 3,
-        typical_story_height: Annotated[float, Field(gt=0)] = 3.0,
-        bottom_story_height: Annotated[float, Field(gt=0)] = 3.0,
+        typical_story_height: Annotated[float | str, Field(description="Number in the new model's units or e.g. '6 m'.")] = 3.0,
+        bottom_story_height: Annotated[float | str, Field(description="Number in the new model's units or e.g. '6 m'.")] = 3.0,
         grid_lines_x: Annotated[int, Field(ge=1)] = 4,
         grid_lines_y: Annotated[int, Field(ge=1)] = 4,
-        spacing_x: Annotated[float, Field(gt=0)] = 6.0,
-        spacing_y: Annotated[float, Field(gt=0)] = 6.0,
+        spacing_x: Annotated[float | str, Field(description="Number in the new model's units or e.g. '6 m'.")] = 6.0,
+        spacing_y: Annotated[float | str, Field(description="Number in the new model's units or e.g. '6 m'.")] = 6.0,
         confirm: Annotated[bool, Field(description="Required when the current model has objects: it is replaced without saving.")] = False,
     ) -> dict[str, Any]:
         """Start a new model (replaces the open one). Lengths are in the chosen units."""
@@ -125,6 +126,11 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
         def work() -> dict[str, Any]:
             session.ensure_connected()
             _guard_replace(session, confirm)
+            L = LengthConverter(units)
+            typ, bot = L(typical_story_height, "typical_story_height"), L(bottom_story_height, "bottom_story_height")
+            sx, sy = L(spacing_x, "spacing_x"), L(spacing_y, "spacing_y")
+            if min(typ, bot, sx, sy) <= 0:
+                raise ArgumentValidationError("Story heights and grid spacings must be positive.")
             session.call("InitializeNewModel", {"Units": units}, _internal=True)
             if template == "blank":
                 session.call("File.NewBlank", _internal=True)
@@ -133,12 +139,12 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
                     "File.NewGridOnly" if template == "grid_only" else "File.NewSteelDeck",
                     {
                         "NumberStorys": number_of_stories,
-                        "TypicalStoryHeight": typical_story_height,
-                        "BottomStoryHeight": bottom_story_height,
+                        "TypicalStoryHeight": typ,
+                        "BottomStoryHeight": bot,
                         "NumberLinesX": grid_lines_x,
                         "NumberLinesY": grid_lines_y,
-                        "SpacingX": spacing_x,
-                        "SpacingY": spacing_y,
+                        "SpacingX": sx,
+                        "SpacingY": sy,
                     },
                     _internal=True,
                 )
@@ -206,19 +212,23 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
     @mcp.tool(annotations=WRITE)
     async def etabs_set_stories(
         stories_bottom_up: Annotated[list[StoryInput], Field(min_length=1, description="Stories from the lowest to the highest.")],
-        base_elevation: float = 0.0,
+        base_elevation: float | str = 0.0,
     ) -> dict[str, Any]:
         """Redefine the story table. ETABS only accepts this on a model without objects on the affected stories."""
 
         def work() -> dict[str, Any]:
             items = stories_bottom_up
+            L = LengthConverter(session.value("GetPresentUnits"))
+            heights = [L(st.height, f"height of {st.name}") for st in items]
+            if min(heights) <= 0:
+                raise ArgumentValidationError("Story heights must be positive.")
             session.call(
                 "Story.SetStories_2",
                 {
-                    "BaseElevation": base_elevation,
+                    "BaseElevation": L(base_elevation, "base_elevation"),
                     "NumberStories": len(items),
                     "StoryNames": [s.name for s in items],
-                    "StoryHeights": [s.height for s in items],
+                    "StoryHeights": heights,
                     "IsMasterStory": [s.is_master for s in items],
                     "SimilarToStory": [s.similar_to for s in items],
                     "SpliceAbove": [s.splice_above for s in items],

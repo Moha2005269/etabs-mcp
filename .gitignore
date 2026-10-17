@@ -13,3 +13,4 @@ docs/live/
 *.EDB
 *.$et
 *.e2k
+.scratch/

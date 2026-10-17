@@ -9,6 +9,7 @@ from pydantic import Field
 
 from ..errors import ITEM_ERRORS, ArgumentValidationError, EtabsCallFailed
 from ..session import EtabsSession
+from ..units import LengthConverter
 from .common import READ, WRITE, names_list
 
 MaterialType = Literal["Steel", "Concrete", "Rebar", "Tendon", "Aluminum", "ColdFormed", "NoDesign", "Masonry"]
@@ -141,12 +142,12 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
         name: str,
         shape: FrameShape,
         material: Annotated[str, Field(description="Material name (see etabs_list_properties).")],
-        depth: Annotated[float | None, Field(description="t3: overall depth (rectangle, i_section, tube) or outside diameter (circle, pipe).")] = None,
-        width: Annotated[float | None, Field(description="t2: width (rectangle, tube) or top flange width (i_section).")] = None,
-        flange_thickness: float | None = None,
-        web_thickness: Annotated[float | None, Field(description="Web thickness (i_section, tube) or wall thickness (pipe).")] = None,
-        bottom_flange_width: Annotated[float | None, Field(description="i_section only; defaults to width.")] = None,
-        bottom_flange_thickness: Annotated[float | None, Field(description="i_section only; defaults to flange_thickness.")] = None,
+        depth: Annotated[float | str | None, Field(description="t3: overall depth (rectangle, i_section, tube) or outside diameter (circle, pipe).")] = None,
+        width: Annotated[float | str | None, Field(description="t2: width (rectangle, tube) or top flange width (i_section).")] = None,
+        flange_thickness: float | str | None = None,
+        web_thickness: Annotated[float | str | None, Field(description="Web thickness (i_section, tube) or wall thickness (pipe).")] = None,
+        bottom_flange_width: Annotated[float | str | None, Field(description="i_section only; defaults to width.")] = None,
+        bottom_flange_thickness: Annotated[float | str | None, Field(description="i_section only; defaults to flange_thickness.")] = None,
         library_file: Annotated[str | None, Field(description="from_library: section database file, e.g. 'AISC16.xml', 'Euro.xml', 'Indian.xml'.")] = None,
         library_section: Annotated[str | None, Field(description="from_library: section name in that file, e.g. 'W14X90'.")] = None,
     ) -> dict[str, Any]:
@@ -155,31 +156,35 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
 
         def work() -> dict[str, Any]:
             session.ensure_connected()
+            L = LengthConverter(session.value("GetPresentUnits"))
+            t3, t2 = L(depth, "depth"), L(width, "width")
+            tf, tw = L(flange_thickness, "flange_thickness"), L(web_thickness, "web_thickness")
+            t2b, tfb = L(bottom_flange_width, "bottom_flange_width"), L(bottom_flange_thickness, "bottom_flange_thickness")
             base = {"Name": name, "MatProp": material}
             if shape == "rectangle":
-                _require(depth=depth, width=width)
-                session.call("PropFrame.SetRectangle", {**base, "T3": depth, "T2": width}, _internal=True)
+                _require(depth=t3, width=t2)
+                session.call("PropFrame.SetRectangle", {**base, "T3": t3, "T2": t2}, _internal=True)
             elif shape == "circle":
-                _require(depth=depth)
-                session.call("PropFrame.SetCircle", {**base, "T3": depth}, _internal=True)
+                _require(depth=t3)
+                session.call("PropFrame.SetCircle", {**base, "T3": t3}, _internal=True)
             elif shape == "i_section":
-                _require(depth=depth, width=width, flange_thickness=flange_thickness, web_thickness=web_thickness)
+                _require(depth=t3, width=t2, flange_thickness=tf, web_thickness=tw)
                 session.call(
                     "PropFrame.SetISection",
-                    {**base, "T3": depth, "T2": width, "Tf": flange_thickness, "Tw": web_thickness,
-                     "T2b": bottom_flange_width or width, "Tfb": bottom_flange_thickness or flange_thickness},
+                    {**base, "T3": t3, "T2": t2, "Tf": tf, "Tw": tw,
+                     "T2b": t2b or t2, "Tfb": tfb or tf},
                     _internal=True,
                 )
             elif shape == "tube":
-                _require(depth=depth, width=width, flange_thickness=flange_thickness, web_thickness=web_thickness)
+                _require(depth=t3, width=t2, flange_thickness=tf, web_thickness=tw)
                 session.call(
                     "PropFrame.SetTube",
-                    {**base, "T3": depth, "T2": width, "Tf": flange_thickness, "Tw": web_thickness},
+                    {**base, "T3": t3, "T2": t2, "Tf": tf, "Tw": tw},
                     _internal=True,
                 )
             elif shape == "pipe":
-                _require(depth=depth, web_thickness=web_thickness)
-                session.call("PropFrame.SetPipe", {**base, "T3": depth, "TW": web_thickness}, _internal=True)
+                _require(depth=t3, web_thickness=tw)
+                session.call("PropFrame.SetPipe", {**base, "T3": t3, "TW": tw}, _internal=True)
             else:
                 _require(library_file=library_file, library_section=library_section)
                 before = set(names_list(session, "PropFrame.GetNameList"))
@@ -211,26 +216,29 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
         name: str,
         kind: Literal["slab", "wall"],
         material: str,
-        thickness: Annotated[float, Field(gt=0)],
+        thickness: Annotated[float | str, Field(description="Number in present units or e.g. '200 mm'.")],
         slab_type: Literal["Slab", "Drop", "Ribbed", "Waffle", "Mat", "Footing"] = "Slab",
         shell_type: Literal["ShellThin", "ShellThick", "Membrane", "Layered"] = "ShellThin",
     ) -> dict[str, Any]:
         """Define a slab or wall property (Define > Section Properties > Slab/Wall Sections)."""
 
         def work() -> dict[str, Any]:
+            t = LengthConverter(session.value("GetPresentUnits"))(thickness, "thickness")
+            if t <= 0:
+                raise ArgumentValidationError("thickness must be positive.")
             if kind == "slab":
                 session.call(
                     "PropArea.SetSlab",
-                    {"Name": name, "SlabType": slab_type, "ShellType": shell_type, "MatProp": material, "Thickness": thickness},
+                    {"Name": name, "SlabType": slab_type, "ShellType": shell_type, "MatProp": material, "Thickness": t},
                     _internal=True,
                 )
             else:
                 session.call(
                     "PropArea.SetWall",
                     {"Name": name, "WallPropType": "Specified", "ShellType": shell_type, "MatProp": material,
-                     "Thickness": thickness},
+                     "Thickness": t},
                     _internal=True,
                 )
-            return {"property": name, "kind": kind, "thickness": thickness}
+            return {"property": name, "kind": kind, "thickness": t}
 
         return await session.run(work)

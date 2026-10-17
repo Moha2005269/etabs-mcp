@@ -9,7 +9,7 @@ from mcp.server.fastmcp import FastMCP
 from . import __version__
 from .session import EtabsSession
 from .settings import Settings
-from .tools import analysis, api, connection, geometry, loads, model, properties, tables, view
+from .tools import analysis, api, connection, geometry, insight, lateral, loads, model, properties, tables, view
 
 INSTRUCTIONS = """\
 This server drives CSI ETABS (v22 and newer) on this machine through its official API, so you can do what an
@@ -30,7 +30,13 @@ Working rules:
   tables are editable with etabs_edit_table.
 - Destructive operations (deleting, replacing the model, unlocking, closing ETABS) need confirm=true. Ask the
   user before confirming.
-- Use etabs_screenshot to check what you built, the same way a person glances at the screen.
+- Look at the model with etabs_render_view (offscreen: any angle, deformed shapes, colour by D/C, displacement,
+  section or story; works with ETABS hidden). etabs_screenshot shows the real ETABS window.
+- Lengths in geometry tools accept numbers in present units or strings such as "6 m", "20 ft", "250 mm".
+- For big models run analysis/design with background=true and follow with etabs_job_wait, so client tool
+  timeouts never cut a run short.
+- Find objects by engineering criteria with etabs_find_objects; take etabs_checkpoint before risky edits;
+  call etabs_what_changed to notice edits the engineer made by hand in ETABS.
 """
 
 WORKFLOW_PROMPT = """\
@@ -54,7 +60,7 @@ def create_server(settings: Settings | None = None, session: EtabsSession | None
     mcp = FastMCP("etabs", instructions=INSTRUCTIONS)
     mcp._etabs_session = session  # type: ignore[attr-defined]  # exposed for tests and shutdown
 
-    for module in (connection, model, geometry, properties, loads, analysis, tables, view, api):
+    for module in (connection, model, geometry, properties, loads, lateral, analysis, tables, view, insight, api):
         module.register(mcp, session)
 
     @mcp.resource("etabs://api/interfaces", mime_type="application/json")

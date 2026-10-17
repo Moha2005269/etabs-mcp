@@ -65,11 +65,14 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
     async def etabs_run_analysis(
         cases: Annotated[list[str] | None, Field(description="Load cases to run (default: all).")] = None,
         save_as: Annotated[str | None, Field(description="Save to this .EDB path first. Required for a never-saved model.")] = None,
+        background: Annotated[bool, Field(description="Return a job id at once and run in the background (for big "
+                                                      "models or clients with short tool timeouts). Follow with "
+                                                      "etabs_job_wait / etabs_job_status.")] = False,
     ) -> dict[str, Any]:
         """Run the analysis (Analyze > Run Analysis). ETABS needs a saved model, saves it again before running,
-        and locks the model afterwards. Large models can take minutes; the call returns when ETABS finishes."""
+        and locks the model afterwards. Large models can take minutes: use background=true to avoid client timeouts."""
 
-        def work() -> dict[str, Any]:
+        def prepare() -> str:
             session.ensure_connected()
             if save_as:
                 Path(save_as).parent.mkdir(parents=True, exist_ok=True)
@@ -86,6 +89,9 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
                     session.call("Analyze.SetRunCaseFlag", {"Name": c, "Run": True}, _internal=True)
             else:
                 session.call("Analyze.SetRunCaseFlag", {"Name": "", "Run": True, "All": True}, _internal=True)
+            return current
+
+        def execute(current: str) -> dict[str, Any]:
             t0 = time.monotonic()
             session.call("Analyze.RunAnalysis", _internal=True)
             statuses = case_status(session)
@@ -98,7 +104,13 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
                 "cases": statuses,
             }
 
-        return await session.run(work)
+        current = await session.run(prepare)
+        if background:
+            job = session.start_job("analysis", f"analysis of {Path(current).name}", lambda: execute(current),
+                                    log_path=Path(current).with_suffix(".LOG"))
+            return {"job_id": job.id, "status": "running",
+                    "next": f"Call etabs_job_wait(job_id='{job.id}') to wait, or etabs_job_status to poll."}
+        return await session.run(execute, current)
 
     @mcp.tool(annotations=READ)
     async def etabs_analysis_status() -> dict[str, Any]:
@@ -158,14 +170,17 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
             Field(description="Shear wall design cannot be started through the ETABS API; read its results with etabs_get_table."),
         ],
         summary_limit: Annotated[int, Field(ge=0, le=5000, description="Members to return in the summary, worst first.")] = 50,
+        background: Annotated[bool, Field(description="Run as a background job (see etabs_job_wait).")] = False,
     ) -> dict[str, Any]:
         """Run design (Design > ... > Start Design/Check) with the model's current design codes and preferences.
         Needs analysis results. Steel and concrete return a member summary, worst first."""
 
-        def work() -> dict[str, Any]:
+        def check() -> None:
             session.ensure_connected()
             if not session.value("GetModelIsLocked"):
                 raise ArgumentValidationError("Design needs analysis results.", hint="Run etabs_run_analysis first.")
+
+        def work() -> dict[str, Any]:
             t0 = time.monotonic()
             session.call(DESIGN_PATHS[kind], _internal=True)
             out: dict[str, Any] = {"design": kind, "seconds": round(time.monotonic() - t0, 1)}
@@ -175,7 +190,34 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
                 out["note"] = "Read detailed results with etabs_list_tables(contains='design') and etabs_get_table."
             return out
 
+        await session.run(check)
+        if background:
+            job = session.start_job("design", f"{kind} design", work)
+            return {"job_id": job.id, "status": "running", "next": f"Call etabs_job_wait(job_id='{job.id}')."}
         return await session.run(work)
+
+    @mcp.tool(annotations=READ)
+    async def etabs_job_status(
+        job_id: Annotated[str | None, Field(description="Job id; omit for the most recent job.")] = None,
+    ) -> dict[str, Any]:
+        """Status of a background job (analysis or design): running / done / failed, elapsed time, the tail of the
+        ETABS analysis log while it runs, and the full result once done. Never blocks."""
+        return _job(session, job_id).to_dict()
+
+    @mcp.tool(annotations=READ)
+    async def etabs_job_wait(
+        job_id: Annotated[str | None, Field(description="Job id; omit for the most recent job.")] = None,
+        timeout_seconds: Annotated[float, Field(ge=1, le=3600, description="Give up waiting after this long (the job keeps running). Keep it under your client's tool timeout.")] = 45,
+    ) -> dict[str, Any]:
+        """Wait for a background job to finish, up to timeout_seconds, then report it (same shape as etabs_job_status).
+        Call again if it is still running."""
+        import asyncio
+
+        job = _job(session, job_id)
+        deadline = time.monotonic() + timeout_seconds
+        while job.status == "running" and time.monotonic() < deadline:
+            await asyncio.sleep(0.25)
+        return job.to_dict()
 
     @mcp.tool(annotations=READ)
     async def etabs_get_design_summary(
@@ -255,3 +297,13 @@ def design_summary(session: EtabsSession, kind: str, limit: int, *, only_failing
     except ITEM_ERRORS as exc:
         out["columns"] = {"warning": exc.message}
     return out
+
+
+def _job(session: EtabsSession, job_id: str | None):
+    if not session.jobs:
+        raise ArgumentValidationError("No background jobs have been started.")
+    if job_id is None:
+        return list(session.jobs.values())[-1]
+    if job_id not in session.jobs:
+        raise ArgumentValidationError(f"Unknown job '{job_id}'.", hint=f"Known jobs: {list(session.jobs)}")
+    return session.jobs[job_id]

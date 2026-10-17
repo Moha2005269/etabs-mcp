@@ -8,6 +8,7 @@ A little state (objects, tables, lock) makes the curated workflows meaningful.
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from etabs_mcp.catalog import ApiCatalog, MethodSig
@@ -52,6 +53,16 @@ class FakeEtabs:
                                                        [["1", "Story1", "C1"], ["2", "Story1", "B1"]]),
         }
         self.staged: tuple[str, list[str], list[str]] | None = None
+        seismic = ["Name", "IsAuto", "XDir", "XDirPlusE", "XDirMinusE", "YDir", "YDirPlusE", "YDirMinusE", "EccRatio",
+                   "TopStory", "BotStory", "PeriodType", "Ss", "S1", "TL", "SiteClass", "R", "Omega", "Cd", "I"]
+        wind = ["Name", "IsAuto", "Exposure", "TopStory", "BotStory", "Parapet", "ParapetHt", "UserCp", "UserCpw",
+                "UserCpl", "ASCECase", "e1", "e2", "WindSpeed", "ExpType", "GrdElevFact", "kzt", "GustFact", "Kd",
+                "SolidGross", "Angle"]
+        self.tables["Load Pattern Definitions - Auto Seismic - ASCE 7-16"] = (seismic, [])
+        self.tables["Load Pattern Definitions - Auto Wind - ASCE 7-16"] = (wind, [])
+        self.tables["Functions - Response Spectrum - ASCE7-16"] = (
+            ["Name", "Ss", "S1", "TL", "SiteClass", "Fa", "Fv", "DampRatio", "GUID"], [])
+        self.tables["Joint Displacements"] = (["Story", "Label", "UniqueName", "OutputCase", "Ux", "Uy", "Uz"], [])
 
     def point(self, xyz: tuple[float, float, float]) -> str:
         for name, p in self.points.items():
@@ -254,7 +265,36 @@ class FakeBackend:
                 return 0, {}
             return run
 
+        def seismic(a: dict[str, Any]) -> tuple[int, dict]:
+            fields, rows = s().tables["Load Pattern Definitions - Auto Seismic - ASCE 7-16"]
+            d = list(a["nDir"])  # ETABS order: X, Y, X+E, Y+E, X-E, Y-E -> table order X, X+E, X-E, Y, Y+E, Y-E
+            table_order = [d[0], d[2], d[4], d[1], d[3], d[5]]
+            row = [a["Name"], "No", *("Yes" if x else "No" for x in table_order), str(a["Eccen"]), "Base", "Base",
+                   "Program Calculated", str(a["Ss"]), str(a["S1"]), str(a["TL"]), "ABCDEF"[a["SiteClass"] - 1],
+                   str(a["R"]), str(a["Omega"]), str(a["Cd"]), str(a["I"])]
+            rows[:] = [r for r in rows if r[0] != a["Name"]] + [row]
+            return 0, {}
+
+        def export(a: dict[str, Any]) -> tuple[int, dict]:
+            Path(a["FileName"]).write_text("$ PROGRAM INFORMATION\n  PROGRAM \"ETABS\"\n$ STORIES - IN SEQUENCE FROM TOP\n  STORY \"Story1\"\n"
+                                           "$ FRAME ASSIGNS\n  LINEASSIGN \"C1\"\n$ END OF MODEL FILE\n")
+            return 0, {}
+
+        def assignments(a: dict[str, Any]) -> tuple[int, dict]:
+            names = list(s().frames)[:1]
+            return 0, {"NumberItems": len(names), "ObjectType": [2] * len(names), "ObjectName": names}
+
+        def open_file(a: dict[str, Any]) -> tuple[int, dict]:
+            s().filename = a["FileName"]
+            return 0, {}
+
         return {
+            "cAutoSeismic.SetASCE716_1": seismic,
+            "cFile.ExportFile": export,
+            "cFile.OpenFile": open_file,
+            "cGroup.GetAssignments": assignments,
+            "cStory.GetNameList": lambda a: (0, {"NumberNames": 2, "MyName": ["Story1", "Story2"]}),
+            "cAreaObj.GetNameListOnStory": lambda a: (0, {"NumberNames": len(s().areas), "MyName": list(s().areas)}),
             "cPropFrame.GetNameList": name_list(lambda: s().frame_props),
             "cPropFrame.ImportProp": add_prop,
             "cPropFrame.ChangeName": rename(lambda: s().frame_props),

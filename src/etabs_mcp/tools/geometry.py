@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..errors import ITEM_ERRORS, ArgumentValidationError
 from ..session import EtabsSession
+from ..units import LengthConverter
 from .common import (
     DESTRUCTIVE,
     OBJ_INTERFACE,
@@ -22,7 +23,7 @@ from .common import (
     targets,
 )
 
-Point3 = Annotated[list[float], Field(min_length=3, max_length=3, description="[x, y, z] in present length units")]
+Point3 = Annotated[list[float | str], Field(min_length=3, max_length=3, description="[x, y, z]: numbers in present length units, or strings like '6 m' or '20 ft'.")]
 
 RESTRAINT_PRESETS = {
     "fixed": [True] * 6,
@@ -61,14 +62,16 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
 
         def work() -> dict[str, Any]:
             session.ensure_connected()
+            L = LengthConverter(session.value("GetPresentUnits"))
             created, errors = [], []
             with suspended_tree(session, len(frames)):
                 for i, f in enumerate(frames):
                     try:
+                        start, end = L.point(f.start, "start"), L.point(f.end, "end")
                         o = session.out(
                             "FrameObj.AddByCoord",
-                            XI=f.start[0], YI=f.start[1], ZI=f.start[2],
-                            XJ=f.end[0], YJ=f.end[1], ZJ=f.end[2],
+                            XI=start[0], YI=start[1], ZI=start[2],
+                            XJ=end[0], YJ=end[1], ZJ=end[2],
                             PropName=f.section, UserName=f.name, CSys=csys,
                         )
                         created.append(o["Name"])
@@ -89,13 +92,15 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
         def work() -> dict[str, Any]:
             session.ensure_connected()
             created, errors = [], []
+            L = LengthConverter(session.value("GetPresentUnits"))
             with suspended_tree(session, len(areas)):
                 for i, a in enumerate(areas):
                     try:
+                        pts = [L.point(p, f"points[{j}]") for j, p in enumerate(a.points)]
                         o = session.out(
                             "AreaObj.AddByCoord",
-                            NumberPoints=len(a.points),
-                            X=[p[0] for p in a.points], Y=[p[1] for p in a.points], Z=[p[2] for p in a.points],
+                            NumberPoints=len(pts),
+                            X=[p[0] for p in pts], Y=[p[1] for p in pts], Z=[p[2] for p in pts],
                             PropName=a.property, UserName=a.name, CSys=csys,
                         )
                         created.append(o["Name"])
@@ -116,10 +121,11 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
         def work() -> dict[str, Any]:
             session.ensure_connected()
             created, errors = [], []
+            L = LengthConverter(session.value("GetPresentUnits"))
             with suspended_tree(session, len(points)):
                 for i, p in enumerate(points):
                     try:
-                        x, y, z = p.coordinates
+                        x, y, z = L.point(p.coordinates, "coordinates")
                         o = session.out("PointObj.AddCartesian", X=x, Y=y, Z=z, UserName=p.name, CSys=csys)
                         created.append(o["Name"])
                     except ITEM_ERRORS as exc:
@@ -202,7 +208,7 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
         ] = "fixed",
         dofs: Annotated[list[bool] | None, Field(min_length=6, max_length=6, description="[UX, UY, UZ, RX, RY, RZ] for 'custom'.")] = None,
         points: Annotated[list[str] | None, Field(description="Joint names.")] = None,
-        at_elevation: Annotated[float | None, Field(description="Apply to every joint at this Z (e.g. the base level).")] = None,
+        at_elevation: Annotated[float | str | None, Field(description="Apply to every joint at this Z, e.g. 0 or '0 m'.")] = None,
         group: str | None = None,
         selected: bool = False,
         tolerance: float = 1e-3,
@@ -219,11 +225,12 @@ def register(mcp: FastMCP, session: EtabsSession) -> None:
             else:
                 value = RESTRAINT_PRESETS[restraint]
             if at_elevation is not None:
+                z0 = LengthConverter(session.value("GetPresentUnits"))(at_elevation, "at_elevation")
                 if points or group or selected:
                     raise ArgumentValidationError("Use at_elevation alone, not with points/group/selected.")
-                pts = [p["name"] for p in _points(session) if abs(p["z"] - at_elevation) <= tolerance]
+                pts = [p["name"] for p in _points(session) if abs(p["z"] - z0) <= tolerance]
                 if not pts:
-                    raise ArgumentValidationError(f"No joints found at z = {at_elevation} (tolerance {tolerance}).")
+                    raise ArgumentValidationError(f"No joints found at z = {z0} (tolerance {tolerance}).")
                 chosen = [(n, "Objects") for n in pts]
             else:
                 chosen = targets(points, group, selected)

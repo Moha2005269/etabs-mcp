@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "etabs-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Model Context Protocol server that lets AI agents drive CSI ETABS (v22+) through its official API: modeling, loads, analysis, design, results and the interactive database."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,6 +22,7 @@ dependencies = [
   "pythonnet>=3.0.3; sys_platform == 'win32'",
   "pywin32>=306; sys_platform == 'win32'",
   "pillow>=10",
+  "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
@@ -46,3 +47,6 @@ target-version = "py310"
 # Broad excepts are intentional at the COM / Win32 boundary, where any .NET exception type can surface.
 select = ["E", "F", "W", "I", "UP", "B"]
 ignore = ["E501", "B905"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["docs/", ".scratch/", "tools/ApiDump/bin/", "tools/ApiDump/obj/", ".github/"]

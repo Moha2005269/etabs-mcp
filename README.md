@@ -18,7 +18,7 @@ through the official ETABS API, with every call checked against the real signatu
 [![Tests](https://img.shields.io/badge/tests-39%20offline%20%2B%20live%20E2E-22C55E)](#tested-against-real-etabs)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-black)](LICENSE)
 
-[Quick start](#quick-start) · [Tools](#43-tools) · [How it works](#how-it-works) · [Testing](#tested-against-real-etabs) · [Configuration](#configuration)
+[Quick start](#quick-start) · [Tools](#60-tools) · [How it works](#how-it-works) · [Testing](#tested-against-real-etabs) · [Configuration](#configuration)
 
 </div>
 
@@ -33,7 +33,7 @@ ETABS has a huge automation API: **143 interfaces, 1,293 reachable methods, 58 e
 
 | | |
 |---|---|
-| **43 curated tools** | Engineer-shaped workflows: `etabs_new_model`, `etabs_add_frames`, `etabs_assign_loads`, `etabs_run_analysis`, `etabs_get_results`, `etabs_run_design`, `etabs_edit_table`, `etabs_screenshot`, and more. |
+| **60 curated tools** | Engineer-shaped workflows: `etabs_new_model`, `etabs_add_frames`, `etabs_define_seismic_load`, `etabs_run_analysis`, `etabs_get_results`, `etabs_run_design`, `etabs_render_view`, `etabs_find_objects`, `etabs_edit_table`, and more. |
 | **The entire API** | `etabs_search_api` → `etabs_describe_api` → `etabs_call_api`. Every ETABS method is callable with plain JSON, validated against the live signature of the ETABS version you run. |
 
 ## Highlights
@@ -49,7 +49,7 @@ Search all 1,293 methods, read exact signatures with enum values, and call any o
 <td width="33%" valign="top">
 
 **Sees like an engineer**<br>
-`etabs_screenshot` returns the real ETABS window, GPU model views included, so the agent can check geometry and design colours.
+`etabs_render_view` draws the model offscreen from any angle: deformed shapes, D/C ratios, sections, stories. `etabs_screenshot` shows the real ETABS window.
 
 </td>
 <td width="33%" valign="top">
@@ -75,7 +75,7 @@ Finds every ETABS 22/23/24… install, loads *that* version's `ETABSv1.dll` and 
 <td valign="top">
 
 **Built for agents**<br>
-Errors carry a code and a **hint** ("model is locked, unlock first"). Units are explicit, tables convert to numbers, and batches report per-item results.
+Errors carry a code and a **hint**. Lengths accept `"6 m"` or `"20 ft"`, long runs go to background jobs, and `etabs_what_changed` notices hand edits in ETABS.
 
 </td>
 </tr>
@@ -87,9 +87,22 @@ Errors carry a code and a **hint** ("model is locked, unlock first"). Units are 
 
 **Requirements:** Windows · ETABS 22 or newer (licensed) · Python 3.10+ · the .NET 8 Desktop Runtime (installed with ETABS 22+).
 
+Download the wheel from the [latest release](https://github.com/Moha2005269/etabs-mcp/releases/latest), then:
+
 ```bash
-pip install git+https://github.com/Moha2005269/etabs-mcp
-etabs-mcp --list-installs     # sanity check: finds your ETABS installs and running instances
+pip install etabs_mcp-0.2.0-py3-none-any.whl
+```
+
+Or install straight from GitHub:
+
+```bash
+pip install "git+https://github.com/Moha2005269/etabs-mcp@v0.2.0"
+```
+
+Check that it finds ETABS:
+
+```bash
+etabs-mcp --list-installs
 ```
 
 ### Connect your agent
@@ -147,7 +160,7 @@ The server connects on its own: it attaches to a running ETABS, or launches one.
 
 ---
 
-## 43 tools
+## 60 tools
 
 | Area | Tools |
 |---|---|
@@ -156,9 +169,13 @@ The server connects on its own: it attaches to a running ETABS, or launches one.
 | **Geometry** | `etabs_add_frames` · `etabs_add_areas` · `etabs_add_points` · `etabs_list_objects` · `etabs_delete_objects` · `etabs_set_restraints` · `etabs_assign_section` · `etabs_select` |
 | **Properties** | `etabs_list_properties` · `etabs_define_material` · `etabs_define_frame_section` · `etabs_define_area_section` |
 | **Loads** | `etabs_define_load_patterns` · `etabs_assign_loads` · `etabs_define_combinations` · `etabs_list_load_definitions` |
+| **Lateral system** | `etabs_define_seismic_load` (ASCE 7-16 ELF) · `etabs_define_wind_load` (ASCE 7-16/7-22, other codes via fields) · `etabs_define_response_spectrum` · `etabs_set_mass_source` · `etabs_assign_diaphragm` · `etabs_set_modal_case` |
 | **Analysis & design** | `etabs_run_analysis` · `etabs_analysis_status` · `etabs_unlock_model` · `etabs_get_results` · `etabs_run_design` · `etabs_get_design_summary` |
+| **Background jobs** | `etabs_job_status` · `etabs_job_wait`: analysis and design with `background=true` never hit client timeouts |
 | **Database tables** | `etabs_list_tables` · `etabs_get_table` · `etabs_edit_table` |
-| **View** | `etabs_screenshot` · `etabs_show_window` · `etabs_refresh_view` |
+| **See & query** | `etabs_render_view` · `etabs_find_objects` · `etabs_screenshot` · `etabs_show_window` · `etabs_refresh_view` |
+| **Track & undo** | `etabs_what_changed` · `etabs_checkpoint` · `etabs_list_checkpoints` · `etabs_restore_checkpoint` |
+| **Export & report** | `etabs_export_model` (full `.e2k` text, paged) · `etabs_design_report` (Markdown) · `etabs_assign_label` (groups, piers, spandrels) |
 | **Entire API** | `etabs_search_api` · `etabs_describe_api` · `etabs_call_api` · `etabs_call_api_batch` |
 
 Plus **resources** (`etabs://api/interfaces`, `etabs://api/interface/{name}`, `etabs://api/enum/{name}`,
@@ -204,6 +221,24 @@ and re-ran everything until no member was over capacity.
 </tr>
 </table>
 
+### `etabs_render_view`
+
+The agent's own view of the model, drawn from its data. It works with ETABS hidden, never takes focus, and shows
+what the ETABS API cannot switch the GUI to.
+
+<table>
+<tr>
+<td width="33%"><img src="docs/assets/view_design.png" alt="Members coloured by design ratio"></td>
+<td width="33%"><img src="docs/assets/view_deformed.png" alt="Deformed shape under ASCE 7-16 seismic load"></td>
+<td width="33%"><img src="docs/assets/view_sections.png" alt="Light theme, coloured by section"></td>
+</tr>
+<tr>
+<td align="center"><sub><code>color_by="design_ratio"</code></sub></td>
+<td align="center"><sub><code>deformed_case="EQX", color_by="displacement"</code></sub></td>
+<td align="center"><sub><code>color_by="section", theme="light"</code></sub></td>
+</tr>
+</table>
+
 <img src="docs/assets/etabs_window.png" alt="The same model in the real ETABS window, captured by etabs_screenshot" width="100%">
 
 <p align="center"><sub>The same model in ETABS itself, captured by the agent with <code>etabs_screenshot</code>.</sub></p>
@@ -218,7 +253,7 @@ flowchart LR
 
     subgraph S["etabs-mcp"]
         direction TB
-        T["43 curated tools<br/>+ generic dispatcher"] --> P["Policy<br/>read-only · confirm · blocked"]
+        T["60 curated tools<br/>+ generic dispatcher"] --> P["Policy<br/>read-only · confirm · blocked"]
         P --> C["Coercion<br/>JSON → typed args, ByRef placeholders"]
         C --> K["API catalog<br/>live reflection of ETABSv1.dll"]
         K --> W["Single STA worker thread"]
@@ -256,7 +291,7 @@ or decompiles the ETABS engine. Its API surface was mapped from the shipped inte
 
 ## Tested against real ETABS
 
-**Offline (CI):** 39 tests. Every curated tool runs through FastMCP against a fake backend that resolves and
+**Offline (CI):** 49 tests. Every curated tool runs through FastMCP against a fake backend that resolves and
 coerces **every call against the real `ETABSv1.dll` catalog**. A wrong method or parameter name fails exactly as it
 would in ETABS.
 
@@ -274,6 +309,20 @@ MCP subprocess, launches ETABS 23.3.2, and runs **42 tool calls with 0 failures 
 | Generic API | releases set and read back, a 9-call batch, status-code failures, validation and confirm errors |
 | Tables | read 26 section assignments, edit one through the Interactive Database, verify through the API |
 | Lifecycle | unlock, save (`.EDB`), screenshot, clean ETABS shutdown |
+
+**Live v0.2 suite:** [`tests/live/test_live_v2.py`](tests/live/test_live_v2.py) drives every new tool against
+ETABS on a 3-storey, 63-member model:
+
+| Step | Verified |
+|---|---|
+| Units | `"3.5 m"`, `"4200 mm"`, `"500 mm"` inputs land as the right values |
+| Find & label | 27 columns, 12 beams on Story2, 18 beams ≥ 7.5 m (selected), group round-trip |
+| Lateral | ASCE 7-16 seismic (X, X±E), auto wind, ASCE 7-16 spectrum + RS case, mass source, diaphragm on 12 slabs, 9 modes |
+| Change tracking | a hand edit and an added beam are both reported; the checkpoint restores the model |
+| Background jobs | analysis returns at once; other calls get `busy`; `job_wait` returns the result |
+| Results | EQX, WX and RSX base shears; X-only seismic gives exactly zero FY |
+| Seeing | design-ratio, deformed, section and plan renders; AISC 341 design errors flagged, never shown as safe |
+| Export & report | `.e2k` sections, Markdown report with reactions, modes, drifts and design |
 
 **Showcase run** ([`tools/record_demo_data.py`](tools/record_demo_data.py)): a 6-storey braced steel building,
 354 members and 72 slabs. LL ΣFz = 9,720 kN (= 3 kPa × 30 m × 18 m × 6 floors, exact), wind ΣFx = 432 kN
@@ -333,7 +382,10 @@ src/etabs_mcp/
   policy.py        read / write / destructive / blocked classification
   discovery.py     ETABS installs and running instances
   screenshot.py    window capture
-  tools/           curated tools (connection, model, geometry, properties, loads, analysis, tables, view, api)
+  render.py        offscreen model renderer (etabs_render_view)
+  units.py         unit-aware lengths ("6 m", "20 ft", "250 mm")
+  tools/           curated tools (connection, model, geometry, properties, loads, lateral, analysis,
+                   tables, view, insight, api)
   data/etabs_api_spec.json   reflected API of ETABSv1.dll
 tools/ApiDump                .NET reflection dumper that produced the API spec
 tools/record_demo_data.py    drives the MCP tools against live ETABS and records the showcase data

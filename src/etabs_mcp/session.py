@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import itertools
 import logging
 import threading
+import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
 from . import policy
 from .catalog import ApiCatalog, MethodSig
 from .coerce import build_result, choose_overload, coerce_arguments
-from .errors import EtabsCallFailed, NotConnectedError
+from .errors import BusyError, EtabsCallFailed, EtabsMcpError, NotConnectedError
 from .settings import Settings
 
 log = logging.getLogger(__name__)
@@ -43,6 +46,43 @@ class Backend(Protocol):
     def invoke(self, target: Any, sig: MethodSig, values: list[Any]) -> tuple[Any, dict[str, Any]]: ...
 
 
+@dataclass
+class Job:
+    """A long ETABS operation (analysis, design) running on the worker thread while the server stays responsive."""
+
+    id: str
+    kind: str
+    description: str
+    future: concurrent.futures.Future
+    started: float = field(default_factory=time.time)
+    finished: float | None = None
+    log_path: Path | None = None
+
+    @property
+    def status(self) -> str:
+        if not self.future.done():
+            return "running"
+        return "failed" if self.future.exception() else "done"
+
+    def to_dict(self, *, log_lines: int = 12) -> dict[str, Any]:
+        end = self.finished or time.time()
+        out: dict[str, Any] = {"job_id": self.id, "kind": self.kind, "description": self.description,
+                               "status": self.status, "elapsed_seconds": round(end - self.started, 1)}
+        if self.status == "done":
+            out["result"] = self.future.result()
+        elif self.status == "failed":
+            exc = self.future.exception()
+            out["error"] = exc.to_dict() if isinstance(exc, EtabsMcpError) else {"error": type(exc).__name__,
+                                                                                   "message": str(exc)}
+        if self.log_path and log_lines and self.log_path.is_file():
+            try:
+                lines = self.log_path.read_text(errors="replace").splitlines()
+                out["etabs_log_tail"] = [ln for ln in lines if ln.strip()][-log_lines:]
+            except OSError:
+                pass
+        return out
+
+
 class EtabsSession:
     def __init__(self, settings: Settings, backend: Backend | None = None):
         self.settings = settings
@@ -54,13 +94,45 @@ class EtabsSession:
         self._bundled: ApiCatalog | None = None
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="etabs-api")
         self._worker_ident: int | None = None
+        self.jobs: dict[str, Job] = {}
+        self._job_ids = itertools.count(1)
 
     # ---------------------------------------------------------------- threading
 
+    @property
+    def active_job(self) -> Job | None:
+        for job in reversed(list(self.jobs.values())):
+            if job.status == "running":
+                return job
+        return None
+
     async def run(self, fn: Callable[..., T], *args: Any) -> T:
-        """Run fn on the ETABS worker thread. Calls are strictly serialised."""
+        """Run fn on the ETABS worker thread. Calls are strictly serialised.
+
+        While a background job owns ETABS, other calls fail fast with 'busy' instead of queueing silently."""
+        job = self.active_job
+        if job is not None:
+            raise BusyError(
+                f"ETABS is busy with background job {job.id} ({job.description}).",
+                hint=f"Poll etabs_job_status(job_id='{job.id}') or wait with etabs_job_wait, then retry.",
+            )
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, self._enter, fn, args)
+
+    def start_job(self, kind: str, description: str, fn: Callable[[], Any], *, log_path: Path | None = None) -> Job:
+        """Queue fn on the worker thread and return immediately."""
+        if self.active_job is not None:
+            raise BusyError(f"Job {self.active_job.id} is still running.", hint="Wait for it with etabs_job_wait.")
+        job_id = f"job-{next(self._job_ids)}"
+        future = self._executor.submit(self._enter, fn, ())
+        job = Job(id=job_id, kind=kind, description=description, future=future, log_path=log_path)
+
+        def _finish(_: concurrent.futures.Future) -> None:
+            job.finished = time.time()
+
+        future.add_done_callback(_finish)
+        self.jobs[job_id] = job
+        return job
 
     def _enter(self, fn: Callable[..., T], args: tuple) -> T:
         self._worker_ident = threading.get_ident()

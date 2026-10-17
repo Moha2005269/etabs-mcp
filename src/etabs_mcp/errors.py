@@ -49,6 +49,10 @@ class ConnectionLostError(FatalError):
     code = "connection_lost"
 
 
+class BusyError(FatalError):
+    code = "busy"
+
+
 class ApiNotFoundError(EtabsMcpError):
     code = "api_not_found"
 
