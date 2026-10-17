@@ -1,0 +1,342 @@
+<div align="center">
+
+<img src="docs/assets/demo.gif" alt="An AI agent driving ETABS through etabs-mcp: modelling, analysis and steel design" width="100%">
+
+# etabs-mcp
+
+### Your AI agent, inside ETABS.
+
+An agentic **Model Context Protocol** server for **CSI ETABS v22+**. Claude Code, Codex, Factory Droid, Cursor and any
+other MCP client can model, load, analyse, design and inspect structures the way an engineer does,
+through the official ETABS API, with every call checked against the real signatures.
+
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![ETABS](https://img.shields.io/badge/ETABS-v22%2B-0078D7)](#version-support)
+[![MCP](https://img.shields.io/badge/MCP-stdio%20%7C%20HTTP-7C5CFF)](https://modelcontextprotocol.io)
+[![Tests](https://img.shields.io/badge/tests-39%20offline%20%2B%20live%20E2E-22C55E)](#tested-against-real-etabs)
+[![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+
+[Quick start](#quick-start) · [Tools](#43-tools) · [How it works](#how-it-works) · [Testing](#tested-against-real-etabs) · [Configuration](#configuration)
+
+</div>
+
+---
+
+## Why
+
+ETABS has a huge automation API: **143 interfaces, 1,293 reachable methods, 58 enums**. It's also full of
+`ref` arrays, status codes and silent quirks. Agents should be designing buildings, not wrestling with COM marshalling.
+
+`etabs-mcp` gives agents two layers:
+
+| | |
+|---|---|
+| **43 curated tools** | Engineer-shaped workflows: `etabs_new_model`, `etabs_add_frames`, `etabs_assign_loads`, `etabs_run_analysis`, `etabs_get_results`, `etabs_run_design`, `etabs_edit_table`, `etabs_screenshot`, and more. |
+| **The entire API** | `etabs_search_api` → `etabs_describe_api` → `etabs_call_api`. Every ETABS method is callable with plain JSON, validated against the live signature of the ETABS version you run. |
+
+## Highlights
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**🧭 Full coverage, zero guesswork**<br>
+Search all 1,293 methods, read exact signatures with enum values, and call any of them. ByRef outputs come back as named JSON.
+
+</td>
+<td width="33%" valign="top">
+
+**👁 Sees like an engineer**<br>
+`etabs_screenshot` returns the real ETABS window, GPU model views included, so the agent can check geometry and design colours.
+
+</td>
+<td width="33%" valign="top">
+
+**🗃 The Interactive Database**<br>
+Read any of ETABS's tables and **edit importable ones** (update / append / delete rows, then apply), with the import log returned.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**🛡 Safe by design**<br>
+Destructive calls need `confirm=true`, internals are blocked, and `--read-only` mode refuses every write. Tool annotations tell clients what is safe.
+
+</td>
+<td valign="top">
+
+**🔁 Version-adaptive**<br>
+Finds every ETABS 22/23/24… install, loads *that* version's `ETABSv1.dll` and reflects its API live. Methods missing in older versions fail clearly.
+
+</td>
+<td valign="top">
+
+**🧠 Built for agents**<br>
+Errors carry a code and a **hint** ("model is locked, unlock first"). Units are explicit, tables convert to numbers, and batches report per-item results.
+
+</td>
+</tr>
+</table>
+
+---
+
+## Quick start
+
+**Requirements:** Windows · ETABS 22 or newer (licensed) · Python 3.10+ · the .NET 8 Desktop Runtime (installed with ETABS 22+).
+
+```bash
+pip install git+https://github.com/Moha2005269/etabs-mcp
+etabs-mcp --list-installs     # sanity check: finds your ETABS installs and running instances
+```
+
+### Connect your agent
+
+<details open>
+<summary><b>Claude Code</b></summary>
+
+```bash
+claude mcp add etabs -- etabs-mcp
+```
+Analyses can take minutes on big models; raise the tool timeout with `MCP_TOOL_TIMEOUT=600000`.
+</details>
+
+<details>
+<summary><b>OpenAI Codex</b></summary>
+
+`~/.codex/config.toml`
+```toml
+[mcp_servers.etabs]
+command = "etabs-mcp"
+tool_timeout_sec = 600
+```
+</details>
+
+<details>
+<summary><b>Factory Droid · Cursor · Claude Desktop · Windsurf · any MCP client</b></summary>
+
+```json
+{
+  "mcpServers": {
+    "etabs": {
+      "command": "etabs-mcp",
+      "env": { "ETABS_MCP_CONNECT_MODE": "auto" }
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>HTTP (remote agents, multiple clients)</b></summary>
+
+```bash
+etabs-mcp --transport streamable-http --port 8765
+```
+</details>
+
+Then just ask:
+
+> *"Model a 2-storey steel frame, 2×1 bays of 6 m × 5 m, W14X90 columns, W18X35 beams, 200 mm slab.
+> Apply 1.5 kPa SDL and 3 kPa live, run the analysis, report T₁, wind drift and the worst steel D/C ratio,
+> and show me the 3D view."*
+
+The server connects on its own: it attaches to a running ETABS, or launches one.
+
+---
+
+## 43 tools
+
+| Area | Tools |
+|---|---|
+| **Session** | `etabs_list_installations` · `etabs_connect` · `etabs_status` · `etabs_disconnect` |
+| **Model & file** | `etabs_model_overview` · `etabs_new_model` · `etabs_open_model` · `etabs_save_model` · `etabs_set_units` · `etabs_get_stories` · `etabs_set_stories` |
+| **Geometry** | `etabs_add_frames` · `etabs_add_areas` · `etabs_add_points` · `etabs_list_objects` · `etabs_delete_objects` · `etabs_set_restraints` · `etabs_assign_section` · `etabs_select` |
+| **Properties** | `etabs_list_properties` · `etabs_define_material` · `etabs_define_frame_section` · `etabs_define_area_section` |
+| **Loads** | `etabs_define_load_patterns` · `etabs_assign_loads` · `etabs_define_combinations` · `etabs_list_load_definitions` |
+| **Analysis & design** | `etabs_run_analysis` · `etabs_analysis_status` · `etabs_unlock_model` · `etabs_get_results` · `etabs_run_design` · `etabs_get_design_summary` |
+| **Database tables** | `etabs_list_tables` · `etabs_get_table` · `etabs_edit_table` |
+| **View** | `etabs_screenshot` · `etabs_show_window` · `etabs_refresh_view` |
+| **Entire API** | `etabs_search_api` · `etabs_describe_api` · `etabs_call_api` · `etabs_call_api_batch` |
+
+Plus **resources** (`etabs://api/interfaces`, `etabs://api/interface/{name}`, `etabs://api/enum/{name}`,
+`etabs://server/info`) and a **prompt** (`etabs_build_and_check`) that walks an agent through the full workflow.
+
+<details>
+<summary><b>Example: anything the curated tools don't cover</b></summary>
+
+```jsonc
+// 1. find it
+etabs_search_api({ "query": "frame releases" })
+// → SapModel.FrameObj.SetReleases(Name, ref II[], ref JJ[], ref StartValue[], ref EndValue[], ItemType)
+
+// 2. call it: plain JSON, validated and converted to the exact .NET types
+etabs_call_api({
+  "path": "FrameObj.SetReleases",
+  "args": { "Name": "13", "II": [false,false,false,false,false,true],
+            "JJ": [false,false,false,false,false,true],
+            "StartValue": [0,0,0,0,0,0], "EndValue": [0,0,0,0,0,0] }
+})
+// → { "ok": true, "ret": 0, "outputs": { ... } }
+```
+</details>
+
+---
+
+## What the agent sees
+
+<table>
+<tr>
+<td><img src="docs/assets/etabs_model.png" alt="Model built by the agent"></td>
+<td><img src="docs/assets/etabs_design.png" alt="Steel design ratios after etabs_run_design"></td>
+</tr>
+<tr>
+<td align="center"><sub>Geometry after <code>etabs_add_frames</code> / <code>etabs_add_areas</code></sub></td>
+<td align="center"><sub>AISC 360-16 D/C ratios after <code>etabs_run_design</code></sub></td>
+</tr>
+</table>
+
+Both images were captured by the agent itself through `etabs_screenshot` during the live test run.
+
+---
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["AI agent<br/>Claude Code · Codex · Droid · Cursor"] -- "MCP (stdio / HTTP)" --> S
+
+    subgraph S["etabs-mcp"]
+        direction TB
+        T["43 curated tools<br/>+ generic dispatcher"] --> P["Policy<br/>read-only · confirm · blocked"]
+        P --> C["Coercion<br/>JSON → typed args, ByRef placeholders"]
+        C --> K["API catalog<br/>live reflection of ETABSv1.dll"]
+        K --> W["Single STA worker thread"]
+    end
+
+    W -- "pythonnet / CoreCLR<br/>MethodInfo.Invoke" --> D["ETABSv1.dll<br/>(the installed version)"]
+    D -- "COM, cross-process" --> E["ETABS.exe"]
+    E -. "screen capture" .-> A
+```
+
+**Reverse-engineering the API, not ETABS.** This server stays on the official, documented OAPI and never patches
+or decompiles the ETABS engine. Its API surface was mapped from the shipped interop assembly:
+
+1. **REA** static metadata analysis of `ETABSv1.dll`: 365 types, 3,275 method defs, 14,752 parameters.
+2. A **reflection dumper** (`tools/ApiDump`) emits every public interface, signature, ByRef flag, default and enum
+   into [`etabs_api_spec.json`](src/etabs_mcp/data/etabs_api_spec.json).
+3. **Cross-check:** reflection and raw metadata agree exactly (e.g. `cFrameObj` + `cAnalysisResults` +
+   `cDatabaseTables` = 136 methods + 1 property accessor = REA's 137).
+4. At runtime the server **re-reflects the loaded DLL**, so validation always matches the ETABS you run.
+
+**Engineering details that make it "just work":**
+
+- **Typed marshalling.** pythonnet boxes Python `int` as `PyInt` inside `object[]`, which reflection rejects for
+  `Int32`. Every argument is routed through a one-element typed array and `Array.Copy`, so ETABS gets real
+  `Int32`/`Double`/enum boxes and ByRef arrays.
+- **One thread.** ETABS and COM proxies aren't thread-safe; every call is serialised on a single worker.
+- **Lost connections** (ETABS closed or crashed) are detected from HRESULTs and reported with a reconnect hint.
+- **ETABS quirks handled:**
+  - Library imports that ETABS silently renames (`W14X90` → `W14X90-1`) are detected and renamed back.
+  - After table edits, ETABS reports the model file as the temporary `.$et`; saving is mapped back to `.EDB`.
+  - Unitless result columns (drift ratios, mass ratios) are turned into numbers, while IDs like `Label: "1"` stay strings.
+  - GPU-drawn viewports are blank to `PrintWindow`, so screenshots come from the composed screen and focus is handed back afterwards.
+
+---
+
+## Tested against real ETABS
+
+**Offline (CI):** 39 tests. Every curated tool runs through FastMCP against a fake backend that resolves and
+coerces **every call against the real `ETABSv1.dll` catalog**. A wrong method or parameter name fails exactly as it
+would in ETABS.
+
+**Live end-to-end:** [`tests/live/test_live_e2e.py`](tests/live/test_live_e2e.py) starts the server as a real
+MCP subprocess, launches ETABS 23.3.2, and runs **42 tool calls with 0 failures in ~42 s**:
+
+| Step | Verified |
+|---|---|
+| Model | 2 storeys, 26 frames (library W-shapes), 4 slabs, 6 fixed supports |
+| Loads | SDL / LL / wind patterns, area + line + joint loads, 2 combos + AISC defaults |
+| Analysis | all cases finished in 9.8 s; model locks |
+| Base reactions | **LL ΣFz = 360 kN = 3 kPa × 120 m², exact**; SDL matches slab + line-load hand calc |
+| Modal / drift | T₁ = 0.398 s · max wind drift 1/1846 |
+| Design | 26 steel members (AISC 360-16), max D/C 0.35, 0 failing |
+| Generic API | releases set and read back, a 9-call batch, status-code failures, validation and confirm errors |
+| Tables | read 26 section assignments, edit one through the Interactive Database, verify through the API |
+| Lifecycle | unlock, save (`.EDB`), screenshot, clean ETABS shutdown |
+
+```bash
+pip install -e ".[dev]"
+pytest                                   # offline suite
+ETABS_MCP_ARTIFACTS=docs/live pytest tests/live --live -s   # drives your local ETABS
+```
+
+---
+
+## Configuration
+
+| Env var / flag | Default | Meaning |
+|---|---|---|
+| `ETABS_MCP_CONNECT_MODE` / `--connect-mode` | `auto` | `attach` to a running ETABS, `start` a new one, or `auto` (attach if one is open, else start) |
+| `ETABS_MCP_VERSION` / `--etabs-version` | newest | ETABS major version to use, e.g. `22` |
+| `ETABS_MCP_INSTALL_DIR` / `--install-dir` | auto | ETABS program folder |
+| `ETABS_MCP_VISIBLE` / `--hidden` | visible | Show the ETABS window when launching |
+| `ETABS_MCP_READ_ONLY` / `--read-only` | off | Refuse every call that changes the model |
+| `ETABS_MCP_ALLOW_DESTRUCTIVE` / `--allow-destructive` | off | Skip `confirm=true` for destructive calls (CI / unattended use) |
+| `ETABS_MCP_RUNTIME` | `coreclr` | .NET host for pythonnet (`netfx` as a fallback) |
+| `ETABS_MCP_MAX_ARRAY_ITEMS` | 2000 | Cap on array lengths returned by `etabs_call_api` |
+| `ETABS_MCP_MAX_TABLE_ROWS` | 500 | Default page size for tables and results |
+
+### Version support
+
+| ETABS | Status |
+|---|---|
+| 23.x | ✅ Verified live (23.3.2) |
+| 22.x | ✅ Supported: same .NET 8 API; the catalog is reflected from your installed DLL |
+| 24+ | ✅ Expected to work: new methods appear automatically through live reflection |
+| ≤ 21 | ❌ Not supported (.NET Framework era API) |
+
+### Safety model
+
+| Level | Examples | Behaviour |
+|---|---|---|
+| read | `Get*`, `Count*`, tables, results | always allowed |
+| write | `Set*`, `Add*`, analysis, design | blocked in read-only mode |
+| destructive | `Delete*`, new/open model, unlock (deletes results), close ETABS | needs `confirm=true` |
+| blocked | `InternalExec`, plugin hooks, active-object switching | never callable |
+
+---
+
+## Project layout
+
+```
+src/etabs_mcp/
+  server.py        FastMCP assembly: tools, resources, prompt, agent instructions
+  session.py       connection lifecycle + single worker thread + generic call()
+  dotnet.py        pythonnet host, live reflection, typed marshalling, connection-loss detection
+  catalog.py       API catalog: path resolution, search, describe
+  coerce.py        JSON → signature-typed values, results → JSON
+  policy.py        read / write / destructive / blocked classification
+  discovery.py     ETABS installs and running instances
+  screenshot.py    window capture
+  tools/           curated tools (connection, model, geometry, properties, loads, analysis, tables, view, api)
+  data/etabs_api_spec.json   reflected API of ETABSv1.dll
+tools/ApiDump      .NET reflection dumper    tools/make_demo_gif.py   renders the README animation
+tests/             offline suite + live end-to-end test
+```
+
+## Troubleshooting
+
+- **`install_not_found`**: run `etabs-mcp --list-installs`; set `ETABS_MCP_INSTALL_DIR` if ETABS lives somewhere unusual.
+- **Attaching does nothing**: wait until ETABS has finished starting and close any modal dialogs; or pass `pid` to `etabs_connect`.
+- **Edits fail after analysis**: the model is locked. `etabs_unlock_model(confirm=true)` deletes results and unlocks it.
+- **Long analyses time out in the client**: raise the client's MCP tool timeout (see [Connect your agent](#connect-your-agent)).
+- **Switching ETABS major versions**: restart the server; one process hosts one `ETABSv1.dll`.
+
+---
+
+<div align="center">
+
+MIT © Moha2005269 · ETABS is a trademark of Computers and Structures, Inc. This project is independent and not affiliated with or endorsed by CSI.
+
+</div>

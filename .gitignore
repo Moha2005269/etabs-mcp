@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+tools/ApiDump/bin/
+tools/ApiDump/obj/
+# Live-run artifacts contain local paths; curated copies live in docs/assets.
+docs/live/
+*.EDB
+*.$et
+*.e2k
