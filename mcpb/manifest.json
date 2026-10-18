@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "etabs-mcp",
   "display_name": "ETABS",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Drive CSI ETABS (v22+) from Claude: model, load, analyse, design and inspect structures.",
   "long_description": "Agentic MCP server for CSI ETABS built on the official ETABS API. 70+ tools for modelling, lateral loads, analysis, steel/concrete/shear-wall design, code checks, offscreen renders, the interactive database, and signature-validated access to every ETABS API method. Requires Windows with ETABS 22 or newer installed and licensed.",
   "author": {

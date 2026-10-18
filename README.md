@@ -1,4 +1,4 @@
-<!-- mcp-name: io.github.moha2005269/etabs-mcp -->
+<!-- mcp-name: io.github.Moha2005269/etabs-mcp -->
 <div align="center">
 
 <img src="https://raw.githubusercontent.com/Moha2005269/etabs-mcp/main/docs/assets/hero.webp" alt="An AI agent models, analyses, designs and iterates a 6-storey steel building in ETABS through etabs-mcp" width="100%">

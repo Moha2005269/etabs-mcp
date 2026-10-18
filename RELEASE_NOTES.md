@@ -1,6 +1,4 @@
-## etabs-mcp v0.3.1
-
-**Now on PyPI and in the MCP Registry.**
+## etabs-mcp v0.3.2
 
 ```
 pip install etabs-mcp
@@ -10,8 +8,7 @@ Or run it without installing: `uvx etabs-mcp`. For Claude Desktop, download the 
 
 Requires Windows and ETABS 22 or newer.
 
-### Changes since v0.3.0
-- Published to PyPI with trusted publishing, and listed in the official MCP Registry as `io.github.moha2005269/etabs-mcp`.
-- Linux container support for registries such as Glama: a `Dockerfile` and `glama.json`. The server starts and lists its tools on Linux, and connecting explains that ETABS needs Windows. CI builds the image and runs an MCP handshake inside it on every push.
+### Changes since v0.3.1
+- The MCP Registry name is now `io.github.Moha2005269/etabs-mcp`, matching the GitHub owner's exact case, which the registry requires.
 
-71 tools. See the [v0.3.0 notes](https://github.com/Moha2005269/etabs-mcp/releases/tag/v0.3.0) for the full feature list.
+v0.3.1 added PyPI publishing and Linux container support (Glama). See the [v0.3.0 notes](https://github.com/Moha2005269/etabs-mcp/releases/tag/v0.3.0) for the full feature list.
