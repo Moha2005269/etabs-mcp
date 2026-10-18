@@ -7,6 +7,7 @@ are bound to the thread that created them.
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -240,6 +241,12 @@ class LiveBackend:
         pid: int | None,
         visible: bool,
     ) -> dict[str, Any]:
+        if sys.platform != "win32":
+            raise InstallNotFoundError(
+                "ETABS and its API run only on Windows, so this server cannot connect here.",
+                hint="Run etabs-mcp on the Windows machine that has ETABS 22+ installed. On other platforms the "
+                     "server still starts and lists its tools (for registries and inspection).",
+            )
         installs = find_installations(self.settings.extra_search_dirs)
         running = find_running_etabs()
         target: RunningEtabs | None = None

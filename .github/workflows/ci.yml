@@ -17,3 +17,21 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check src tests tools/render_hero.py tools/record_demo_data.py tools/build_mcpb.py
       - run: pytest -q
+
+  linux-container:
+    # Registries (Glama, Smithery, the MCP Registry) inspect MCP servers in Linux containers: the server must
+    # start there and list its tools even though ETABS itself only runs on Windows.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install and smoke-test on Linux
+        run: |
+          pip install .
+          python tools/smoke_stdio.py etabs-mcp
+      - name: Build the Docker image and smoke-test inside it
+        run: |
+          docker build -t etabs-mcp .
+          python tools/smoke_stdio.py docker run -i --rm etabs-mcp

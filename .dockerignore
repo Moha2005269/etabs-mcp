@@ -1,0 +1,9 @@
+.git
+.scratch
+build
+dist
+docs
+tests
+tools
+mcpb
+**/__pycache__
