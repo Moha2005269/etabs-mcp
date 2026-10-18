@@ -88,21 +88,21 @@ Errors carry a code and a **hint**. Lengths accept `"6 m"` or `"20 ft"`, long ru
 
 **Requirements:** Windows · ETABS 22 or newer (licensed) · Python 3.10+ · the .NET 8 Desktop Runtime (installed with ETABS 22+).
 
-**Claude Desktop, one click:** download `etabs-mcp-0.3.0-py3XX.mcpb` for your Python version from the
+Install from PyPI:
+
+```bash
+pip install etabs-mcp
+```
+
+Or run it without installing, using [uv](https://docs.astral.sh/uv/):
+
+```bash
+uvx etabs-mcp --list-installs
+```
+
+**Claude Desktop, one click:** download `etabs-mcp-<version>-py3XX.mcpb` for your Python version from the
 [latest release](https://github.com/Moha2005269/etabs-mcp/releases/latest) and open it. Claude Desktop installs
 the extension with every dependency bundled.
-
-**Everything else:** install the package from the release:
-
-```bash
-pip install "https://github.com/Moha2005269/etabs-mcp/releases/download/v0.3.0/etabs_mcp-0.3.0-py3-none-any.whl"
-```
-
-Or from GitHub:
-
-```bash
-pip install "git+https://github.com/Moha2005269/etabs-mcp@v0.3.0"
-```
 
 Check that it finds ETABS:
 
